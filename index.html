@@ -2,14 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#090909">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calculator">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Calculator</title>
 <link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#090909;color:#fff}
-*{box-sizing:border-box} body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:16px}
+*{box-sizing:border-box} html{min-height:100%;background:#090909;-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;
+    padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
+        max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
 main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
-button,input,select{font:inherit} button{cursor:pointer;color:inherit} header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px}
+button,input,select{font:inherit} button{cursor:pointer;color:inherit}
+button,a,summary{touch-action:manipulation}
+header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px;min-height:44px}
 #fullscreenStatus{margin:6px 0;color:#ffb4a9;font-size:13px;text-align:right}
 #fullscreenStatus:empty{display:none}
 :fullscreen{background:#090909}
@@ -25,17 +35,24 @@ button,input,select{font:inherit} button{cursor:pointer;color:inherit} header bu
 .key.zero{grid-column:span 2;aspect-ratio:auto;text-align:left;padding-left:25px}
 .key:active,.key.lit{filter:brightness(1.55);transform:scale(.94)}
 [aria-pressed=true].operator{background:#fff}
-dialog{width:min(calc(100% - 32px),390px);max-height:90dvh;border:1px solid #444;border-radius:20px;padding:20px;background:#161616;color:#fff}
+dialog{width:min(calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)),390px);
+    max-height:calc(100vh - 32px);
+    max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px);
+    overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+    border:1px solid #444;border-radius:20px;padding:20px;background:#161616;color:#fff}
+dialog.settings-fallback[open]{display:block;position:fixed;inset:50% auto auto 50%;
+    transform:translate(-50%,-50%);z-index:10}
 dialog::backdrop{background:#000b} h2{margin:0 0 12px} p{color:#bbb;line-height:1.45}
-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0}
-input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:space-between;gap:8px}.actions button:first-child{background:#ff9f0a;color:#171108}
+label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0;min-height:44px}
+input,select{max-width:55%;min-height:44px;padding:6px}
+.actions{display:flex;justify-content:space-between;gap:8px}.actions button:first-child{background:#ff9f0a;color:#171108}
 .settings-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .settings-heading h2{margin:0}
 #settings details{border-top:1px solid #393939;padding:12px 0}
-#settings summary{cursor:pointer;font-weight:600;padding:4px 0}
+#settings summary{cursor:pointer;font-weight:600;padding:4px 0;min-height:44px;display:flex;align-items:center}
 #settings p:empty{display:none}
 
-.open-pinx{display:inline-block;padding:10px 14px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
+.open-pinx{display:inline-block;padding:10px 14px;min-height:44px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
 .pair-controls{display:flex;gap:8px}.pair-controls input{flex:1;min-width:0;max-width:none}
 .glitch-overlay{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;
     background:linear-gradient(0deg,transparent 0 15%,rgba(255,40,110,.34) 15% 18%,transparent 18% 70%,rgba(40,245,255,.4) 70% 73%,transparent 73%),
@@ -66,8 +83,8 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <div class="settings-heading"><h2 id="settingsTitle">Settings</h2><button id="done" type="button">Done</button></div>
 <details open>
 <summary>Phone pairing</summary>
-<p><a class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
-<p>Opening this page from PINX's Wi-Fi pairing link connects automatically. For Bluetooth on a second device, start pairing in PINX and enter its current six-digit code here. The code changes when PINX pairing restarts; stop Wi-Fi pairing before switching modes.</p>
+<p><a id="openPinx" class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
+<p>Opening this page from PINX's Wi-Fi pairing link connects automatically. On iPhone, keep both devices on the same Wi-Fi network and allow Local Network access if prompted. Bluetooth pairing needs Android and a browser with Web Bluetooth; enter PINX's current six-digit code there. The code changes when pairing restarts; stop Wi-Fi pairing before switching modes.</p>
 <p id="pairStatus" role="status" hidden></p>
 <div class="pair-controls">
 <input id="bluetoothCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="Bluetooth pairing code" placeholder="6-digit code">
@@ -89,6 +106,8 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <script>
 'use strict';
 const byId = id => document.getElementById(id);
+const isIOSBrowser = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const screen = byId('screen'), value = byId('value'), keypad = byId('keys'), settings = byId('settings');
 const pairStatus = byId('pairStatus');
 function setConnectionStatus(message) {
@@ -101,11 +120,22 @@ const fullscreenStatus = byId('fullscreenStatus');
 async function toggleFullscreen() {
     fullscreenStatus.textContent = '';
     try {
-        if (document.fullscreenElement) await document.exitFullscreen();
-        else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
-        else fullscreenStatus.textContent = 'Fullscreen is not supported by this browser.';
+        if (document.fullscreenElement) {
+            if (typeof document.exitFullscreen === 'function') await document.exitFullscreen();
+            else fullscreenStatus.textContent = isIOSBrowser
+                ? 'iPhone Safari cannot switch browser fullscreen. Use Share > Add to Home Screen for an app-style view.'
+                : 'Fullscreen is not supported by this browser.';
+        } else if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+        } else {
+            fullscreenStatus.textContent = isIOSBrowser
+                ? 'iPhone Safari cannot switch browser fullscreen. Use Share > Add to Home Screen for an app-style view.'
+                : 'Fullscreen is not supported by this browser.';
+        }
     } catch (error) {
-        fullscreenStatus.textContent = 'Fullscreen could not be changed. Check your browser permissions and try again.';
+        fullscreenStatus.textContent = isIOSBrowser
+            ? 'iPhone Safari cannot switch browser fullscreen. Use Share > Add to Home Screen for an app-style view.'
+            : 'Fullscreen could not be changed. Check your browser permissions and try again.';
     }
 }
 const controls = ['trigger', 'motion', 'sound', 'floatFinalDigit'].map(byId);
@@ -394,7 +424,7 @@ async function reveal(prediction, incoming = false) {
     if (busy) return;
     busy = true;
     keypad.inert = true;
-    if (settings.open) settings.close();
+    if (settings.open || settings.hasAttribute('open')) closeSettings();
     const zodiacOnly = zodiacSigns.includes(prediction.result);
     const continuingHandoff = incoming && !Number.isFinite(Number(prediction.result));
     const quiet = continuingHandoff || !byId('sound').checked;
@@ -441,11 +471,20 @@ async function reveal(prediction, incoming = false) {
     }
 }
 function openSettings() {
-    if (busy || settings.open) return;
+    if (busy || settings.open || settings.hasAttribute('open')) return;
     byId('status').textContent = '';
-    settings.showModal();
+    if (typeof settings.showModal === 'function') settings.showModal();
+    else {
+        settings.classList.add('settings-fallback');
+        settings.setAttribute('open', '');
+    }
 }
-byId('done').onclick = () => settings.close();
+function closeSettings() {
+    if (settings.open && typeof settings.close === 'function') settings.close();
+    else settings.removeAttribute('open');
+    settings.classList.remove('settings-fallback');
+}
+byId('done').onclick = closeSettings;
 byId('sample').onclick = () => reveal(birthdayPrediction('12051994'));
 byId('manual').onclick = () => {
     const prediction = getPrediction();
@@ -458,7 +497,7 @@ document.addEventListener('keydown', event => {
         openSettings();
         return;
     }
-    if (settings.open || busy || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (settings.open || settings.hasAttribute('open') || busy || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.target instanceof HTMLButtonElement && ['Enter', ' '].includes(event.key)) return;
     const key = ({ Enter:'=', Escape:'AC', '*':'×', '/':'÷', '-':'−' })[event.key] || event.key;
     if (!keyButtons.has(key)) return;
@@ -536,6 +575,12 @@ const voidBluetoothRead = 'f307bcce-d82d-4c4b-a123-1cc717069ad2';
 const voidBluetoothWrite = 'f307bcce-d82d-4c4b-a123-1cc717069ad3';
 const bluetoothButton = byId('bluetoothConnect');
 const bluetoothStatus = byId('bluetoothStatus');
+if (isIOSBrowser) {
+    byId('openPinx').hidden = true;
+    byId('openPinx').parentElement.hidden = true;
+    bluetoothButton.parentElement.hidden = true;
+    bluetoothStatus.textContent = 'iPhone browsers, including Safari, do not support Web Bluetooth. PINX Bluetooth pairing needs Android; use Wi-Fi pairing on the same network.';
+}
 
 function bluetoothOperation(session, operation) {
     const next = session.operation.then(() => {
@@ -596,10 +641,20 @@ bluetoothButton.addEventListener('click', async () => {
     }
     if (bluetoothConnecting) return;
     if (pairedWithAndroid) {
-        bluetoothStatus.textContent = 'Open the HTTPS calculator page to switch from Wi-Fi to Bluetooth.';
+        bluetoothStatus.textContent = isIOSBrowser
+            ? 'iPhone browsers do not support Web Bluetooth. Use PINX Wi-Fi pairing on the same network.'
+            : 'Open the HTTPS calculator page to switch from Wi-Fi to Bluetooth.';
         return;
     }
-    if (!window.isSecureContext || !navigator.bluetooth) {
+    if (isIOSBrowser) {
+        bluetoothStatus.textContent = 'iPhone browsers do not support Web Bluetooth. PINX Bluetooth pairing needs Android; use Wi-Fi pairing on the same network.';
+        return;
+    }
+    if (!window.isSecureContext) {
+        bluetoothStatus.textContent = 'Bluetooth pairing requires the HTTPS calculator page.';
+        return;
+    }
+    if (!navigator.bluetooth) {
         bluetoothStatus.textContent = 'Bluetooth pairing requires the HTTPS calculator in a browser with Web Bluetooth, such as Chrome on Android.';
         return;
     }
