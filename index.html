@@ -70,7 +70,7 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <details open>
 <summary>Phone pairing</summary>
 <p><a class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
-<p>Opening this page from PINX's Wi-Fi pairing link connects automatically. For Bluetooth, tap <strong>Pair web calculator over Bluetooth</strong> in Void and enter the six-digit code here.</p>
+<p>Opening this page from PINX's Wi-Fi pairing link connects automatically. For Bluetooth on a second device, start pairing in PINX and enter its current six-digit code here. The code changes when PINX pairing restarts; stop Wi-Fi pairing before switching modes.</p>
 <p id="pairStatus" role="status" hidden></p>
 <div class="pair-controls">
 <input id="bluetoothCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="Bluetooth pairing code" placeholder="6-digit code">
@@ -602,12 +602,16 @@ bluetoothButton.addEventListener('click', async () => {
     bluetoothButton.disabled = true;
     bluetoothStatus.textContent = 'Choose the phone advertising its Void session.';
     let device;
+    let phase = 'device selection';
     try {
         device = await navigator.bluetooth.requestDevice({ filters: [{ services: [voidBluetoothService] }] });
+        phase = 'connecting to PINX';
         const gatt = await device.gatt.connect();
+        phase = 'finding the PINX service';
         const service = await gatt.getPrimaryService(voidBluetoothService);
         const read = await service.getCharacteristic(voidBluetoothRead);
         const write = await service.getCharacteristic(voidBluetoothWrite);
+        phase = 'checking the pairing code';
         await write.writeValueWithResponse(new TextEncoder().encode('P' + code));
         const session = { device, read, write, operation: Promise.resolve(), decoder: new TextDecoder(), payload: '' };
         bluetoothSession = session;
@@ -620,7 +624,15 @@ bluetoothButton.addEventListener('click', async () => {
         pollBluetooth(session);
     } catch (error) {
         if (device?.gatt?.connected) device.gatt.disconnect();
-        bluetoothStatus.textContent = 'Could not pair. Check the code and Bluetooth, then try again.';
+        if (phase === 'checking the pairing code') {
+            bluetoothStatus.textContent = 'PINX rejected the code or the Bluetooth link dropped. Enter the current six-digit code shown in PINX and keep its pairing active.';
+        } else if (phase === 'device selection' && error?.name === 'NotFoundError') {
+            bluetoothStatus.textContent = 'No PINX device was selected. Start Bluetooth pairing in PINX, then choose it here.';
+        } else if (error?.name === 'NotAllowedError') {
+            bluetoothStatus.textContent = 'Bluetooth access was canceled or blocked. Allow Bluetooth for this site and try again.';
+        } else {
+            bluetoothStatus.textContent = `Bluetooth failed while ${phase}. Check that PINX pairing is active and Nearby devices is allowed.`;
+        }
     } finally {
         bluetoothConnecting = false;
         bluetoothButton.disabled = false;
