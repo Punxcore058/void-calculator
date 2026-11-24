@@ -122,6 +122,13 @@ settings.addEventListener('change', () => {
         )));
     } catch (error) {}
 });
+window.addEventListener('pagehide', () => {
+    try {
+        localStorage.removeItem('pinx-web-settings');
+    } catch (error) {
+        console.warn('Could not clear saved calculator settings on exit.', error);
+    }
+});
 let entry = '0', left = null, operator = '', fresh = false, birthdayInput = '', busy = false;
 let revealed = false, audio, equalsCount = 0;
 const keyButtons = new Map();
