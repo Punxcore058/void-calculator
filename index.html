@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#090909;color:#fff}
+*{box-sizing:border-box} body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:16px}
+main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
+button,input,select{font:inherit} button{cursor:pointer;color:inherit} header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px}
+#screen{display:flex;align-items:end;justify-content:end;min-height:150px;padding:0 9px 12px;overflow:hidden}
+#value{white-space:nowrap;font-weight:300;font-variant-numeric:tabular-nums;font-size:72px;line-height:1.1}
+#value.details{white-space:pre-line;max-width:100%;overflow-wrap:anywhere;text-align:right;font-size:clamp(20px,6vw,34px);line-height:1.2}
+#screen,#screen *,#keys,#keys *{-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#keys{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.key:focus{outline:none}
+.key:focus-visible{outline:2px solid #d0d0d0;outline-offset:3px}
+.key{border:0;border-radius:999px;aspect-ratio:1;background:#303030;font-size:clamp(18px,6vw,31px);touch-action:manipulation}
+.key.utility{background:#b5b5b5;color:#111}.key.operator{background:#ff9f0a;color:#16110a}
+.key.zero{grid-column:span 2;aspect-ratio:auto;text-align:left;padding-left:25px}
+.key:active,.key.lit{filter:brightness(1.55);transform:scale(.94)}
+[aria-pressed=true].operator{background:#fff}
+dialog{width:min(calc(100% - 32px),390px);max-height:90dvh;border:1px solid #444;border-radius:20px;padding:20px;background:#161616;color:#fff}
+dialog::backdrop{background:#000b} h2{margin:0 0 12px} p{color:#bbb;line-height:1.45}
+label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0}
+input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:space-between;gap:8px}.actions button:first-child{background:#ff9f0a;color:#171108}
+.settings-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.settings-heading h2{margin:0}
+#settings details{border-top:1px solid #393939;padding:12px 0}
+#settings summary{cursor:pointer;font-weight:600;padding:4px 0}
+#settings p:empty{display:none}
+#settings label[for=pairUrl]{margin-bottom:6px}
+.pair-controls{display:flex;gap:8px}.pair-controls input{flex:1;min-width:0;max-width:none}
+.glitch-overlay{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;
+    background:repeating-linear-gradient(0deg,transparent 0 5px,rgba(80,220,195,.12) 5px 6px)}
+.glitch-overlay.active{animation:scan-flicker 2s ease-out both}
+.glitch-overlay.handoff{animation:scan-flicker 650ms ease-out both}
+@keyframes scan-flicker{0%,100%{opacity:0}20%{opacity:.85}45%{opacity:.25}70%{opacity:.65}}
+</style>
+</head>
+<body>
+<div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
+<main>
+<div id="screen"><output id="value" aria-live="polite">0</output></div>
+<div id="keys" aria-label="Calculator keypad"></div>
+</main>
+<dialog id="settings" aria-labelledby="settingsTitle">
+<div class="settings-heading"><h2 id="settingsTitle">Settings</h2><button id="done" type="button">Done</button></div>
+<details open>
+<summary>Phone pairing</summary>
+<p>On your phone, choose <strong>Void → Pair web calculator</strong> and paste its link below.</p>
+<form id="pairForm">
+<label for="pairUrl">Phone pairing link</label>
+<div class="pair-controls">
+<input id="pairUrl" type="url" inputmode="url" autocomplete="off" required placeholder="http://…">
+<button type="submit">Connect</button>
+</div>
+<p id="pairStatus" role="status"></p>
+</form>
+<label>Float the final digit on phone <input id="floatFinalDigit" type="checkbox" checked></label>
+</details>
+<details>
+<summary>Reveal</summary>
+<label>Trigger <select id="trigger"><option value="manual">Manual</option><option value="equals">Equals</option><option value="swipe">Swipe display</option></select></label>
+<label>Reveal <select id="mode"><option value="birthday">Zodiac only</option><option value="number">Calculator number</option></select></label>
+<label>Reveal sound <input id="sound" type="checkbox" checked></label>
+<label>Reduced motion <input id="motion" type="checkbox"></label>
+<p>For a zodiac reveal, enter a birthday in MMDDYYYY format.</p>
+<div class="actions"><button id="sample" type="button">Try sample</button><button id="manual" type="button">Reveal now</button></div>
+<p id="status" role="status"></p>
+</details>
+<details>
+<summary>Advanced</summary>
+<label>Seconds per digit <input id="speed" type="number" min=".4" max="4" step=".1" value=".8"></label>
+<label>Starting delay (seconds) <input id="delay" type="number" min="0" max="10" step=".5" value="0"></label>
+<label>Enable fixed number force <input id="forceEnabled" type="checkbox"></label>
+<label>Forced number <input id="forceNumber" type="text" inputmode="decimal" value="1089"></label>
+<label>Display force on Equals press <input id="forcePress" type="number" min="1" max="20" step="1" value="3"></label>
+</details>
+</dialog>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+const screen = byId('screen'), value = byId('value'), keypad = byId('keys'), settings = byId('settings');
+const controls = ['trigger', 'mode', 'speed', 'delay', 'motion', 'sound', 'forceEnabled', 'forceNumber', 'forcePress', 'floatFinalDigit'].map(byId);
+try {
+    const saved = JSON.parse(localStorage.getItem('pinx-web-settings') || '{}');
+    for (const field of controls) {
+        if (!(field.id in saved)) continue;
+        if (field.type === 'checkbox') field.checked = saved[field.id];
+        else field.value = saved[field.id];
+    }
+} catch (error) {}
+settings.addEventListener('change', () => {
+    try {
+        localStorage.setItem('pinx-web-settings', JSON.stringify(Object.fromEntries(
+            controls.map(field => [field.id, field.type === 'checkbox' ? field.checked : field.value])
+        )));
+    } catch (error) {}
+});
+let entry = '0', left = null, operator = '', fresh = false, birthdayInput = '', busy = false;
+let revealed = false, audio, equalsCount = 0;
+const keyButtons = new Map();
+const operators = { '÷': (a,b) => b !== 0 ? a / b : 0, '×': (a,b) => a*b, '−': (a,b) => a-b, '+': (a,b) => a+b };
+for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','2','3','+','0','.','=']) {
+    const button = document.createElement('button');
+    button.className = 'key';
+    if (['AC','±','%'].includes(label)) button.classList.add('utility');
+    if (label in operators || label === '=') button.classList.add('operator');
+    if (label === '0') button.classList.add('zero');
+    button.textContent = label;
+    button.addEventListener('click', () => press(label));
+    keyButtons.set(label, button);
+    keypad.append(button);
+}
+function fit() {
+    value.style.fontSize = '';
+    if (value.classList.contains('details')) return;
+    const width = screen.clientWidth - 18;
+    const textWidth = value.scrollWidth;
+    if (width > 0 && textWidth > width) value.style.fontSize = Math.floor(72 * width / textWidth) + 'px';
+}
+function show(text) {
+    value.textContent = text;
+    value.classList.toggle('details', text.includes('\n') || (text.length > 28 && /\s/.test(text)));
+    keyButtons.get('AC').textContent = entry === '0' && left === null ? 'AC' : 'C';
+    fit();
+}
+window.addEventListener('resize', fit);
+const pairedWithAndroid = isPairingLink(new URL(location.href));
+let pendingDigitSend = Promise.resolve();
+let pairedDigitDelay = 1;
+let outgoingDigits = '';
+
+function sendDeletedDigit(digits, finalDigit) {
+    pendingDigitSend = pendingDigitSend.then(async () => {
+        await pause(pairedDigitDelay * 1000);
+        const path = (finalDigit ? 'send/final/' : 'send/') + digits;
+        const response = await fetch(path, { method: 'POST' });
+        if (!response.ok) throw new Error('PINX rejected the digit.');
+    }).catch(() => {
+        byId('pairStatus').textContent = 'Could not send the last digit. Check the phone connection.';
+    });
+}
+
+function eraseLastDigit() {
+    if (busy || (fresh && operator)) return;
+    const numeric = /^-?\d+\.?\d*$/.test(entry);
+    const remaining = numeric ? entry.slice(0, -1) : '';
+    const removed = entry.slice(-1);
+    if (pairedWithAndroid && numeric && /^\d$/.test(removed)) {
+        const finalDigit = !/\d/.test(remaining);
+        outgoingDigits = (removed + outgoingDigits).slice(0, 16);
+        sendDeletedDigit(outgoingDigits, finalDigit && byId('floatFinalDigit').checked);
+        if (finalDigit) outgoingDigits = '';
+    }
+    revealed = false;
+    entry = remaining;
+    if (!entry || entry === '-') entry = '0';
+    birthdayInput = '';
+    fresh = false;
+    show(entry);
+}
+{
+    let swipeStart;
+    let tapCount = 0;
+    let lastTap = 0;
+    screen.style.touchAction = 'pan-y';
+    screen.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        swipeStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    screen.addEventListener('pointercancel', () => { swipeStart = null; });
+    screen.addEventListener('pointerup', event => {
+        if (!swipeStart || swipeStart.id !== event.pointerId) return;
+        const dx = Math.abs(event.clientX - swipeStart.x);
+        const dy = Math.abs(event.clientY - swipeStart.y);
+        swipeStart = null;
+        if (busy) return;
+        if (dx < 12 && dy < 12) {
+            const now = performance.now();
+            tapCount = now - lastTap < 500 ? tapCount + 1 : 1;
+            lastTap = now;
+            if (tapCount === 3) {
+                tapCount = 0;
+                openSettings();
+            }
+            return;
+        }
+        tapCount = 0;
+        if (dx < 30 || dx <= dy * 1.5) return;
+        if (pairedWithAndroid || byId('trigger').value !== 'swipe') {
+            eraseLastDigit();
+            return;
+        }
+        const prediction = getPrediction();
+        if (prediction) reveal(prediction);
+    });
+}
+
+function normalize(number) {
+    return String(number);
+}
+function birthdayDigits(text) {
+    return /^\d{7,8}$/.test(text) ? text.padStart(8, '0') : '';
+}
+function rememberBirthday() {
+    birthdayInput = birthdayDigits(entry) || birthdayInput;
+}
+function press(key) {
+    if (busy) return;
+    outgoingDigits = '';
+    if (revealed) { revealed = false; show(entry); }
+    if (key === 'AC') {
+        entry = '0'; left = null; operator = ''; fresh = false; birthdayInput = ''; equalsCount = 0;
+    } else if (key in operators) {
+        rememberBirthday();
+        if (operator && !fresh) entry = normalize(operators[operator](left, Number(entry)));
+        left = Number(entry); operator = key; fresh = true;
+    } else if (key === '=') {
+        rememberBirthday();
+        let forced = false;
+        if (left !== null && operator) {
+            equalsCount++;
+            const target = byId('forceNumber').value.trim();
+            const forcePress = Math.round(seconds('forcePress', 3, 1, 20));
+            forced = byId('forceEnabled').checked && equalsCount === forcePress &&
+                /^-?\d+(?:\.\d+)?$/.test(target) && Number.isFinite(Number(target));
+            entry = forced ? target : normalize(operators[operator](left, Number(entry)));
+        }
+        left = null; operator = ''; fresh = true;
+        for (const name of Object.keys(operators)) keyButtons.get(name).setAttribute('aria-pressed', 'false');
+        if (byId('trigger').value === 'equals') {
+            const prediction = getPrediction() || (forced ? numberPrediction() : null);
+            if (prediction) { reveal(prediction); return; }
+        }
+    } else if (key === '%') {
+        const number = parseFloat(entry);
+        if (!Number.isNaN(number)) entry = String(number / 100);
+    } else if (key === '±') {
+        if (entry !== '0') entry = entry.startsWith('-') ? entry.slice(1) : '-' + entry;
+    } else {
+        if (fresh || entry === 'Error') entry = '0';
+        fresh = false;
+        if (key === '.') {
+            if (!entry.includes('.')) entry += '.';
+        } else if (entry.length < 16) {
+            entry = entry === '0' ? key : entry + key;
+        }
+        if (left === null) birthdayInput = '';
+    }
+    for (const name of Object.keys(operators)) keyButtons.get(name).setAttribute('aria-pressed', String(name === operator));
+    show(entry);
+}
+function numberPrediction() {
+    const digits = entry.replace(/\D/g, '');
+    return Number.isFinite(Number(entry)) && digits ? { digits, result: entry } : null;
+}
+const zodiacSigns = ['Capricorn', 'Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini',
+    'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius'];
+
+function getPrediction() {
+    if (byId('mode').value === 'number') return numberPrediction();
+    const digits = birthdayDigits(entry) || birthdayInput;
+    if (!digits) return null;
+    const month = Number(digits.slice(0,2)), day = Number(digits.slice(2,4)), year = Number(digits.slice(4));
+    if (month < 1 || month > 12 || year < 1900 || year > new Date().getFullYear() ||
+        day < 1 || day > new Date(year, month, 0).getDate()) return null;
+    const cutoffs = [20,19,21,20,21,21,23,23,23,23,22,22];
+    return { digits, result: zodiacSigns[(month - 1 + (day >= cutoffs[month - 1] ? 1 : 0)) % 12] };
+}
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+function chime() {
+    if (!audio || audio.state !== 'running') return;
+    const tone = audio.createOscillator(), gain = audio.createGain(), now = audio.currentTime;
+    tone.type = 'triangle';
+    tone.frequency.setValueAtTime(530, now);
+    tone.frequency.setValueAtTime(795, now + .11);
+    gain.gain.setValueAtTime(.1, now);
+    gain.gain.exponentialRampToValueAtTime(.001, now + .28);
+    tone.connect(gain); gain.connect(audio.destination); tone.start(); tone.stop(now + .3);
+}
+function seconds(id, fallback, min, max) {
+    const number = byId(id).valueAsNumber;
+    return Math.min(max, Math.max(min, Number.isFinite(number) ? number : fallback));
+}
+async function playWebGlitch() {
+    const overlay = byId('glitchOverlay');
+    const keys = [...keyButtons.values()];
+    const originals = keys.map(key => key.textContent);
+    overlay.classList.add('active');
+    try {
+        for (let frame = 0; frame < 4; frame++) {
+            const labels = [...originals];
+            for (let i = labels.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [labels[i], labels[j]] = [labels[j], labels[i]];
+            }
+            keys.forEach((key, index) => { key.textContent = labels[index]; });
+            await pause(300);
+        }
+        await pause(800);
+    } finally {
+        keys.forEach((key, index) => { key.textContent = originals[index]; });
+        overlay.classList.remove('active');
+    }
+}
+
+async function finishPredictionHandoff(result, reduced) {
+    show(result);
+    if (reduced || typeof value.animate !== 'function') return;
+    const overlay = byId('glitchOverlay');
+    overlay.classList.add('handoff');
+    try {
+        await value.animate([
+            { transform: 'translateX(-40vw)', opacity: 0 },
+            { transform: 'translateX(-16px)', opacity: .8, offset: .65 },
+            { transform: 'translateX(-6px)', opacity: .5, offset: .78 },
+            { transform: 'translateX(0)', opacity: 1 }
+        ], { duration: 650, easing: 'ease-out' }).finished;
+    } finally {
+        overlay.classList.remove('handoff');
+    }
+}
+
+async function reveal(prediction, incoming = false) {
+    if (busy) return;
+    busy = true;
+    keypad.inert = true;
+    if (settings.open) settings.close();
+    const zodiacOnly = zodiacSigns.includes(prediction.result);
+    const continuingHandoff = incoming && !Number.isFinite(Number(prediction.result));
+    const quiet = continuingHandoff || !byId('sound').checked;
+    if (!quiet && window.AudioContext) {
+        try { audio ??= new AudioContext(); audio.resume().catch(() => {}); } catch (error) {}
+    }
+    const reduced = byId('motion').checked || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const transferDelay = Number(prediction.digitDelay);
+    const interval = (incoming && Number.isInteger(transferDelay) && transferDelay >= 1 && transferDelay <= 4
+        ? transferDelay : seconds('speed', .8, .4, 4)) * 1000;
+    try {
+        if (continuingHandoff) {
+            await finishPredictionHandoff(prediction.result, reduced);
+            revealed = true;
+            return;
+        }
+        show(zodiacOnly ? '' : '0');
+        if (!incoming) await pause(seconds('delay', 0, 0, 10) * 1000);
+        let formed = '';
+        for (const digit of zodiacOnly ? '' : prediction.digits) {
+            await pause(interval);
+            formed += digit;
+            show(formed);
+            if (incoming && !reduced && typeof value.animate === 'function') {
+                value.animate([
+                    { opacity: .35, transform: 'translateX(-30px)' },
+                    { opacity: 1, transform: 'translateX(0)' }
+                ], { duration: 280, easing: 'ease-out' });
+            }
+        }
+        await pause(400);
+        if (!quiet) chime();
+        if (!reduced) await playWebGlitch();
+        show(prediction.result);
+        if (!reduced && value.animate) {
+            await value.animate([{opacity:.2, transform:'translateY(5px)'},{opacity:1, transform:'translateY(0)'}],
+                {duration:440,easing:'ease-out'}).finished;
+        }
+        revealed = true;
+    } finally {
+        busy = false;
+        keypad.inert = false;
+    }
+}
+function openSettings() {
+    if (busy || settings.open) return;
+    byId('status').textContent = '';
+    settings.showModal();
+}
+byId('done').onclick = () => settings.close();
+byId('sample').onclick = () => reveal({ digits:'12051994', result:'Sagittarius' });
+byId('manual').onclick = () => {
+    const prediction = getPrediction();
+    if (prediction) reveal(prediction);
+    else byId('status').textContent = 'Enter a valid birthday in MMDDYYYY format or choose Calculator number.';
+};
+document.addEventListener('keydown', event => {
+    if (event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        openSettings();
+        return;
+    }
+    if (settings.open || busy || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target instanceof HTMLButtonElement && ['Enter', ' '].includes(event.key)) return;
+    const key = ({ Enter:'=', Escape:'AC', '*':'×', '/':'÷', '-':'−' })[event.key] || event.key;
+    if (!keyButtons.has(key)) return;
+    event.preventDefault();
+    press(key);
+});
+function isPairingLink(url) {
+    return url.protocol === 'http:' && url.port && !url.username && !url.password &&
+        !url.search && !url.hash &&
+        /^\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/$/i.test(url.pathname);
+}
+
+byId('pairForm').addEventListener('submit', event => {
+    event.preventDefault();
+    try {
+        const url = new URL(byId('pairUrl').value.trim());
+        if (isPairingLink(url)) {
+            location.assign(url.href);
+            return;
+        }
+    } catch (error) {}
+    byId('pairStatus').textContent = 'Paste the full HTTP link shown by PINX, including the port and pairing code.';
+});
+
+if (pairedWithAndroid) {
+    byId('pairStatus').textContent = 'Checking phone connection…';
+    let pendingReceived = '';
+    let pendingReveal = null;
+    async function receiveDigits() {
+        try {
+            const response = await fetch('digits', { cache: 'no-store' });
+            if (response.ok) {
+                const delay = Number(response.headers.get('X-PINX-Digit-Delay'));
+                if (Number.isInteger(delay) && delay >= 1 && delay <= 4) pairedDigitDelay = delay;
+                byId('pairStatus').textContent = 'Connected to PINX. Swipe on either calculator to send a deleted digit.';
+                const digits = await response.text();
+                if (digits.length <= 64 && /^-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?$/.test(digits)) {
+                    pendingReceived = digits;
+                } else if (digits.startsWith('{')) {
+                    try {
+                        const packet = JSON.parse(digits);
+                        if (typeof packet.digits === 'string' && /^\d{1,16}$/.test(packet.digits) &&
+                                typeof packet.result === 'string' && packet.result.trim() && packet.result.length <= 512) {
+                            pendingReveal = packet;
+                        }
+                    } catch (error) {}
+                }
+                if (!busy && pendingReveal) {
+                    const packet = pendingReveal;
+                    pendingReveal = null;
+                    reveal(packet, true);
+                } else if (!busy && pendingReceived) {
+                    const received = pendingReceived;
+                    pendingReceived = '';
+                    outgoingDigits = '';
+                    entry = received;
+                    left = null;
+                    operator = '';
+                    fresh = true;
+                    revealed = false;
+                    birthdayInput = '';
+                    for (const name of Object.keys(operators)) {
+                        keyButtons.get(name).setAttribute('aria-pressed', 'false');
+                    }
+                    show(received);
+                }
+            }
+        } catch (error) {
+            byId('pairStatus').textContent = 'Phone unavailable. Keep PINX open on the same Wi-Fi.';
+        } finally {
+            setTimeout(receiveDigits, 350);
+        }
+    }
+    receiveDigits();
+}
+</script>
+</body>
+</html>
