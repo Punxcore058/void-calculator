@@ -10,8 +10,6 @@
 *{box-sizing:border-box} body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:16px}
 main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
 button,input,select{font:inherit} button{cursor:pointer;color:inherit} header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px}
-.app-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:42px}
-.app-toolbar button{border:0;border-radius:10px;background:#282828;padding:8px 12px}
 #fullscreenStatus{margin:6px 0;color:#ffb4a9;font-size:13px;text-align:right}
 #fullscreenStatus:empty{display:none}
 :fullscreen{background:#090909}
@@ -49,19 +47,12 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <body>
 <div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
 <main>
-<div class="app-toolbar">
-<button id="menuButton" type="button" aria-label="More options" aria-haspopup="dialog">⋮</button>
-</div>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
+<p id="fullscreenStatus" role="status" aria-live="polite"></p>
 <div id="keys" aria-label="Calculator keypad"></div>
 </main>
 <dialog id="settings" aria-labelledby="settingsTitle">
 <div class="settings-heading"><h2 id="settingsTitle">Settings</h2><button id="done" type="button">Done</button></div>
-<details>
-<summary>Display</summary>
-<button id="fullscreen" type="button" aria-pressed="false">Enter fullscreen</button>
-<p id="fullscreenStatus" role="status" aria-live="polite"></p>
-</details>
 <details open>
 <summary>Phone pairing</summary>
 <p><a class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
@@ -104,24 +95,17 @@ function setConnectionStatus(message) {
         pairStatus.textContent = message;
     }
 }
-const fullscreenButton = byId('fullscreen'), fullscreenStatus = byId('fullscreenStatus');
-function syncFullscreenButton() {
-    const active = document.fullscreenElement === document.documentElement;
-    fullscreenButton.textContent = active ? 'Exit fullscreen' : 'Enter fullscreen';
-    fullscreenButton.setAttribute('aria-pressed', String(active));
-}
-fullscreenButton.addEventListener('click', async () => {
+const fullscreenStatus = byId('fullscreenStatus');
+async function toggleFullscreen() {
     fullscreenStatus.textContent = '';
     try {
         if (document.fullscreenElement) await document.exitFullscreen();
         else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
         else fullscreenStatus.textContent = 'Fullscreen is not supported by this browser.';
     } catch (error) {
-        fullscreenStatus.textContent = 'Fullscreen could not be enabled. Check your browser permissions and try again.';
+        fullscreenStatus.textContent = 'Fullscreen could not be changed. Check your browser permissions and try again.';
     }
-});
-document.addEventListener('fullscreenchange', syncFullscreenButton);
-syncFullscreenButton();
+}
 const controls = ['trigger', 'mode', 'speed', 'delay', 'motion', 'sound', 'forceEnabled', 'forceNumber', 'forcePress', 'floatFinalDigit'].map(byId);
 try {
     const saved = JSON.parse(localStorage.getItem('pinx-web-settings') || '{}');
@@ -149,7 +133,14 @@ for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','
     if (label in operators || label === '=') button.classList.add('operator');
     if (label === '0') button.classList.add('zero');
     button.textContent = label;
-    button.addEventListener('click', () => press(label));
+    if (label === '.') {
+        button.setAttribute('aria-label', 'Decimal point and fullscreen toggle');
+        button.title = 'Decimal point and fullscreen toggle';
+    }
+    button.addEventListener('click', () => {
+        if (label === '.') void toggleFullscreen();
+        press(label);
+    });
     keyButtons.set(label, button);
     keypad.append(button);
 }
@@ -427,7 +418,6 @@ function openSettings() {
     byId('status').textContent = '';
     settings.showModal();
 }
-byId('menuButton').addEventListener('click', openSettings);
 byId('done').onclick = () => settings.close();
 byId('sample').onclick = () => reveal({ digits:'12051994', result:'Sagittarius' });
 byId('manual').onclick = () => {
