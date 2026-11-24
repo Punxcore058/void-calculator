@@ -38,10 +38,21 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 .open-pinx{display:inline-block;padding:10px 14px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
 .pair-controls{display:flex;gap:8px}.pair-controls input{flex:1;min-width:0;max-width:none}
 .glitch-overlay{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;
-    background:repeating-linear-gradient(0deg,transparent 0 5px,rgba(80,220,195,.12) 5px 6px)}
-.glitch-overlay.active{animation:scan-flicker 2s ease-out both}
-.glitch-overlay.handoff{animation:scan-flicker 650ms ease-out both}
-@keyframes scan-flicker{0%,100%{opacity:0}20%{opacity:.85}45%{opacity:.25}70%{opacity:.65}}
+    background:linear-gradient(0deg,transparent 0 15%,rgba(255,40,110,.34) 15% 18%,transparent 18% 70%,rgba(40,245,255,.4) 70% 73%,transparent 73%),
+        repeating-linear-gradient(0deg,transparent 0 4px,rgba(80,220,195,.36) 4px 6px)}
+.glitch-overlay.active{animation:scan-flicker 2s steps(1,end) both}
+.glitch-overlay.handoff{animation:handoff-fade 650ms ease-out both}
+@keyframes scan-flicker{
+    0%,100%{opacity:0}
+    5%{opacity:.95}10%{opacity:.2}
+    17%{opacity:.9}22%{opacity:.1}
+    31%{opacity:1}36%{opacity:.2}
+    46%{opacity:.9}51%{opacity:.1}
+    61%{opacity:.95}66%{opacity:.15}
+    76%{opacity:.9}81%{opacity:.1}
+    91%{opacity:1}96%{opacity:.2}
+}
+@keyframes handoff-fade{0%,100%{opacity:0}20%{opacity:.85}45%{opacity:.25}70%{opacity:.65}}
 </style>
 </head>
 <body>
