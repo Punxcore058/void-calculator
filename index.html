@@ -123,12 +123,22 @@ settings.addEventListener('change', () => {
     } catch (error) {}
 });
 window.addEventListener('pagehide', () => {
+    clearCalculatorSettings();
+});
+function clearCalculatorSettings() {
     try {
         localStorage.removeItem('pinx-web-settings');
     } catch (error) {
         console.warn('Could not clear saved calculator settings on exit.', error);
     }
-});
+}
+function exitCalculator() {
+    clearCalculatorSettings();
+    window.close();
+    window.setTimeout(() => {
+        if (!window.closed) window.location.replace('about:blank');
+    }, 0);
+}
 let entry = '0', left = null, operator = '', fresh = false, birthdayInput = '', busy = false;
 let revealed = false, audio, equalsCount = 0;
 const keyButtons = new Map();
@@ -143,6 +153,10 @@ for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','
     if (label === '.') {
         button.setAttribute('aria-label', 'Decimal point and fullscreen toggle');
         button.title = 'Decimal point and fullscreen toggle';
+    }
+    if (label === '%') {
+        button.setAttribute('aria-label', 'Exit app');
+        button.title = 'Exit app';
     }
     button.addEventListener('click', () => {
         if (label === '.') void toggleFullscreen();
@@ -283,8 +297,8 @@ function press(key) {
             if (prediction) { reveal(prediction); return; }
         }
     } else if (key === '%') {
-        const number = parseFloat(entry);
-        if (!Number.isNaN(number)) entry = String(number / 100);
+        exitCalculator();
+        return;
     } else if (key === '±') {
         if (entry !== '0') entry = entry.startsWith('-') ? entry.slice(1) : '-' + entry;
     } else {
