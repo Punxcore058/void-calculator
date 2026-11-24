@@ -10,16 +10,8 @@
 *{box-sizing:border-box} body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:16px}
 main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
 button,input,select{font:inherit} button{cursor:pointer;color:inherit} header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px}
-.app-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:42px}
+.app-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:42px}
 .app-toolbar button{border:0;border-radius:10px;background:#282828;padding:8px 12px}
-.connection-indicator{display:inline-flex;align-items:center;gap:7px;min-width:0;padding:7px 10px;border-radius:999px;background:#202020;color:#b8b8b8;font-size:12px;white-space:nowrap}
-.connection-indicator::before{content:"";width:8px;height:8px;flex:none;border-radius:50%;background:#888}
-.connection-indicator[data-state=connecting]{color:#ffcb6b}
-.connection-indicator[data-state=connecting]::before{background:#ffb020}
-.connection-indicator[data-state=connected]{color:#a7e9b5}
-.connection-indicator[data-state=connected]::before{background:#43c46b}
-.connection-indicator[data-state=offline]{color:#ffb4a9}
-.connection-indicator[data-state=offline]::before{background:#ff6b5e}
 #fullscreenStatus{margin:6px 0;color:#ffb4a9;font-size:13px;text-align:right}
 #fullscreenStatus:empty{display:none}
 :fullscreen{background:#090909}
@@ -58,15 +50,18 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
 <main>
 <div class="app-toolbar">
-<span id="connectionIndicator" class="connection-indicator" data-state="unpaired" role="status" aria-live="polite" aria-atomic="true">Not connected</span>
-<button id="fullscreen" type="button" aria-pressed="false">Enter fullscreen</button>
+<button id="menuButton" type="button" aria-label="More options" aria-haspopup="dialog">⋮</button>
 </div>
-<p id="fullscreenStatus" role="status" aria-live="polite"></p>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
 <div id="keys" aria-label="Calculator keypad"></div>
 </main>
 <dialog id="settings" aria-labelledby="settingsTitle">
 <div class="settings-heading"><h2 id="settingsTitle">Settings</h2><button id="done" type="button">Done</button></div>
+<details>
+<summary>Display</summary>
+<button id="fullscreen" type="button" aria-pressed="false">Enter fullscreen</button>
+<p id="fullscreenStatus" role="status" aria-live="polite"></p>
+</details>
 <details open>
 <summary>Phone pairing</summary>
 <p><a class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
@@ -102,10 +97,8 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 'use strict';
 const byId = id => document.getElementById(id);
 const screen = byId('screen'), value = byId('value'), keypad = byId('keys'), settings = byId('settings');
-const connectionIndicator = byId('connectionIndicator'), pairStatus = byId('pairStatus');
-function setConnectionStatus(state, message) {
-    connectionIndicator.dataset.state = state;
-    connectionIndicator.textContent = message;
+const pairStatus = byId('pairStatus');
+function setConnectionStatus(message) {
     if (pairStatus) {
         pairStatus.hidden = false;
         pairStatus.textContent = message;
@@ -434,6 +427,7 @@ function openSettings() {
     byId('status').textContent = '';
     settings.showModal();
 }
+byId('menuButton').addEventListener('click', openSettings);
 byId('done').onclick = () => settings.close();
 byId('sample').onclick = () => reveal({ digits:'12051994', result:'Sagittarius' });
 byId('manual').onclick = () => {
@@ -500,17 +494,17 @@ function updatePairedDelay(delay) {
 
 if (pairedWithAndroid) {
     let hasConnected = false;
-    setConnectionStatus('connecting', 'Connecting to PINX…');
+    setConnectionStatus('Connecting to PINX…');
     async function receiveDigits() {
         try {
             const response = await fetch('digits', { cache: 'no-store' });
             if (!response.ok) throw new Error('PINX pairing request failed.');
             updatePairedDelay(Number(response.headers.get('X-PINX-Digit-Delay')));
             hasConnected = true;
-            setConnectionStatus('connected', 'Connected to PINX');
+            setConnectionStatus('Connected to PINX');
             acceptPhonePacket(await response.text());
         } catch (error) {
-            setConnectionStatus('offline', hasConnected
+            setConnectionStatus(hasConnected
                 ? 'Connection lost'
                 : 'PINX unavailable — check Wi-Fi');
         } finally {
