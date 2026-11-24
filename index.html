@@ -4,11 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Calculator</title>
+<link rel="manifest" href="./manifest.webmanifest">
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#090909;color:#fff}
 *{box-sizing:border-box} body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:16px}
 main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
 button,input,select{font:inherit} button{cursor:pointer;color:inherit} header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px}
+.app-toolbar{display:flex;justify-content:flex-end;min-height:42px}
+.app-toolbar button{border:0;border-radius:10px;background:#282828;padding:8px 12px}
+#fullscreenStatus{margin:6px 0;color:#ffb4a9;font-size:13px;text-align:right}
+#fullscreenStatus:empty{display:none}
+:fullscreen{background:#090909}
 #screen{display:flex;align-items:end;justify-content:end;min-height:150px;padding:0 9px 12px;overflow:hidden}
 #value{white-space:nowrap;font-weight:300;font-variant-numeric:tabular-nums;font-size:72px;line-height:1.1}
 #value.details{white-space:pre-line;max-width:100%;overflow-wrap:anywhere;text-align:right;font-size:clamp(20px,6vw,34px);line-height:1.2}
@@ -31,6 +37,7 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 #settings summary{cursor:pointer;font-weight:600;padding:4px 0}
 #settings p:empty{display:none}
 #settings label[for=pairUrl]{margin-bottom:6px}
+.open-pinx{display:inline-block;padding:10px 14px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
 .pair-controls{display:flex;gap:8px}.pair-controls input{flex:1;min-width:0;max-width:none}
 .glitch-overlay{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;
     background:repeating-linear-gradient(0deg,transparent 0 5px,rgba(80,220,195,.12) 5px 6px)}
@@ -42,6 +49,8 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <body>
 <div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
 <main>
+<div class="app-toolbar"><button id="fullscreen" type="button" aria-pressed="false">Enter fullscreen</button></div>
+<p id="fullscreenStatus" role="status" aria-live="polite"></p>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
 <div id="keys" aria-label="Calculator keypad"></div>
 </main>
@@ -49,6 +58,7 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <div class="settings-heading"><h2 id="settingsTitle">Settings</h2><button id="done" type="button">Done</button></div>
 <details open>
 <summary>Phone pairing</summary>
+<p><a class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
 <p>On your phone, choose <strong>Void → Pair web calculator</strong> and paste its link below.</p>
 <form id="pairForm">
 <label for="pairUrl">Phone pairing link</label>
@@ -58,6 +68,12 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 </div>
 <p id="pairStatus" role="status"></p>
 </form>
+<div class="pair-controls">
+<input id="bluetoothCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="Bluetooth pairing code" placeholder="6-digit code">
+<button id="bluetoothConnect" type="button">Connect Bluetooth</button>
+</div>
+<button id="generateBluetoothCode" type="button">Generate code</button>
+<p id="bluetoothStatus" role="status"></p>
 <label>Float the final digit on phone <input id="floatFinalDigit" type="checkbox" checked></label>
 </details>
 <details>
@@ -83,6 +99,24 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 'use strict';
 const byId = id => document.getElementById(id);
 const screen = byId('screen'), value = byId('value'), keypad = byId('keys'), settings = byId('settings');
+const fullscreenButton = byId('fullscreen'), fullscreenStatus = byId('fullscreenStatus');
+function syncFullscreenButton() {
+    const active = document.fullscreenElement === document.documentElement;
+    fullscreenButton.textContent = active ? 'Exit fullscreen' : 'Enter fullscreen';
+    fullscreenButton.setAttribute('aria-pressed', String(active));
+}
+fullscreenButton.addEventListener('click', async () => {
+    fullscreenStatus.textContent = '';
+    try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+        else fullscreenStatus.textContent = 'Fullscreen is not supported by this browser.';
+    } catch (error) {
+        fullscreenStatus.textContent = 'Fullscreen could not be enabled. Check your browser permissions and try again.';
+    }
+});
+document.addEventListener('fullscreenchange', syncFullscreenButton);
+syncFullscreenButton();
 const controls = ['trigger', 'mode', 'speed', 'delay', 'motion', 'sound', 'forceEnabled', 'forceNumber', 'forcePress', 'floatFinalDigit'].map(byId);
 try {
     const saved = JSON.parse(localStorage.getItem('pinx-web-settings') || '{}');
@@ -131,16 +165,26 @@ window.addEventListener('resize', fit);
 const pairedWithAndroid = isPairingLink(new URL(location.href));
 let pendingDigitSend = Promise.resolve();
 let pairedDigitDelay = 1;
+let bluetoothSession = null;
+let bluetoothConnecting = false;
 let outgoingDigits = '';
 
 function sendDeletedDigit(digits, finalDigit) {
+    const session = bluetoothSession;
     pendingDigitSend = pendingDigitSend.then(async () => {
         await pause(pairedDigitDelay * 1000);
+        if (session) {
+            if (session !== bluetoothSession) return;
+            const bytes = new TextEncoder().encode((finalDigit ? '!' : '') + digits);
+            await bluetoothOperation(session, () => session.write.writeValueWithResponse(bytes));
+            return;
+        }
         const path = (finalDigit ? 'send/final/' : 'send/') + digits;
         const response = await fetch(path, { method: 'POST' });
         if (!response.ok) throw new Error('PINX rejected the digit.');
     }).catch(() => {
-        byId('pairStatus').textContent = 'Could not send the last digit. Check the phone connection.';
+        byId(session ? 'bluetoothStatus' : 'pairStatus').textContent =
+            'Could not send the last digit. Check the phone connection.';
     });
 }
 
@@ -149,7 +193,7 @@ function eraseLastDigit() {
     const numeric = /^-?\d+\.?\d*$/.test(entry);
     const remaining = numeric ? entry.slice(0, -1) : '';
     const removed = entry.slice(-1);
-    if (pairedWithAndroid && numeric && /^\d$/.test(removed)) {
+    if ((pairedWithAndroid || bluetoothSession) && numeric && /^\d$/.test(removed)) {
         const finalDigit = !/\d/.test(remaining);
         outgoingDigits = (removed + outgoingDigits).slice(0, 16);
         sendDeletedDigit(outgoingDigits, finalDigit && byId('floatFinalDigit').checked);
@@ -190,7 +234,7 @@ function eraseLastDigit() {
         }
         tapCount = 0;
         if (dx < 30 || dx <= dy * 1.5) return;
-        if (pairedWithAndroid || byId('trigger').value !== 'swipe') {
+        if (pairedWithAndroid || bluetoothSession || byId('trigger').value !== 'swipe') {
             eraseLastDigit();
             return;
         }
@@ -416,48 +460,53 @@ byId('pairForm').addEventListener('submit', event => {
     byId('pairStatus').textContent = 'Paste the full HTTP link shown by PINX, including the port and pairing code.';
 });
 
+let pendingReceived = '';
+let pendingReveal = null;
+
+function acceptPhonePacket(payload) {
+    if (payload.length <= 64 && /^-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?$/.test(payload)) {
+        pendingReceived = payload;
+    } else if (payload.startsWith('{')) {
+        try {
+            const packet = JSON.parse(payload);
+            if (typeof packet.digits === 'string' && /^\d{1,16}$/.test(packet.digits) &&
+                    typeof packet.result === 'string' && packet.result.trim() && packet.result.length <= 512) {
+                pendingReveal = packet;
+            }
+        } catch (error) {}
+    }
+    if (!busy && pendingReveal) {
+        const packet = pendingReveal;
+        pendingReveal = null;
+        reveal(packet, true);
+    } else if (!busy && pendingReceived) {
+        const received = pendingReceived;
+        pendingReceived = '';
+        outgoingDigits = '';
+        entry = received;
+        left = null;
+        operator = '';
+        fresh = true;
+        revealed = false;
+        birthdayInput = '';
+        for (const name of Object.keys(operators)) keyButtons.get(name).setAttribute('aria-pressed', 'false');
+        show(received);
+    }
+}
+
+function updatePairedDelay(delay) {
+    if (Number.isInteger(delay) && delay >= 1 && delay <= 4) pairedDigitDelay = delay;
+}
+
 if (pairedWithAndroid) {
     byId('pairStatus').textContent = 'Checking phone connection…';
-    let pendingReceived = '';
-    let pendingReveal = null;
     async function receiveDigits() {
         try {
             const response = await fetch('digits', { cache: 'no-store' });
             if (response.ok) {
-                const delay = Number(response.headers.get('X-PINX-Digit-Delay'));
-                if (Number.isInteger(delay) && delay >= 1 && delay <= 4) pairedDigitDelay = delay;
+                updatePairedDelay(Number(response.headers.get('X-PINX-Digit-Delay')));
                 byId('pairStatus').textContent = 'Connected to PINX. Swipe on either calculator to send a deleted digit.';
-                const digits = await response.text();
-                if (digits.length <= 64 && /^-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?$/.test(digits)) {
-                    pendingReceived = digits;
-                } else if (digits.startsWith('{')) {
-                    try {
-                        const packet = JSON.parse(digits);
-                        if (typeof packet.digits === 'string' && /^\d{1,16}$/.test(packet.digits) &&
-                                typeof packet.result === 'string' && packet.result.trim() && packet.result.length <= 512) {
-                            pendingReveal = packet;
-                        }
-                    } catch (error) {}
-                }
-                if (!busy && pendingReveal) {
-                    const packet = pendingReveal;
-                    pendingReveal = null;
-                    reveal(packet, true);
-                } else if (!busy && pendingReceived) {
-                    const received = pendingReceived;
-                    pendingReceived = '';
-                    outgoingDigits = '';
-                    entry = received;
-                    left = null;
-                    operator = '';
-                    fresh = true;
-                    revealed = false;
-                    birthdayInput = '';
-                    for (const name of Object.keys(operators)) {
-                        keyButtons.get(name).setAttribute('aria-pressed', 'false');
-                    }
-                    show(received);
-                }
+                acceptPhonePacket(await response.text());
             }
         } catch (error) {
             byId('pairStatus').textContent = 'Phone unavailable. Keep PINX open on the same Wi-Fi.';
@@ -467,6 +516,126 @@ if (pairedWithAndroid) {
     }
     receiveDigits();
 }
+
+const voidBluetoothService = 'f307bcce-d82d-4c4b-a123-1cc717069ad1';
+const voidBluetoothRead = 'f307bcce-d82d-4c4b-a123-1cc717069ad2';
+const voidBluetoothWrite = 'f307bcce-d82d-4c4b-a123-1cc717069ad3';
+const bluetoothButton = byId('bluetoothConnect');
+const bluetoothStatus = byId('bluetoothStatus');
+
+function bluetoothOperation(session, operation) {
+    const next = session.operation.then(() => {
+        if (session !== bluetoothSession) throw new Error('Bluetooth disconnected');
+        return operation();
+    });
+    session.operation = next.catch(() => {});
+    return next;
+}
+
+function endBluetoothSession(session, message) {
+    if (session !== bluetoothSession) return;
+    bluetoothSession = null;
+    pendingReceived = '';
+    pendingReveal = null;
+    outgoingDigits = '';
+    if (session.device.gatt.connected) session.device.gatt.disconnect();
+    bluetoothStatus.textContent = message;
+    bluetoothButton.textContent = 'Connect Bluetooth';
+}
+
+async function pollBluetooth(session) {
+    if (session !== bluetoothSession) return;
+    try {
+        // Each read contains up to 19 data bytes and a frame marker.
+        for (let frame = 0; frame < 160; frame++) {
+            const value = await bluetoothOperation(session, () => session.read.readValue());
+            if (session !== bluetoothSession) return;
+            if (value.byteLength < 1) throw new Error('Empty Bluetooth frame');
+            const type = value.getUint8(0);
+            if (type === 0) {
+                if (value.byteLength >= 2) updatePairedDelay(value.getUint8(1));
+                session.decoder = new TextDecoder();
+                session.payload = '';
+                acceptPhonePacket('');
+                break;
+            }
+            if (type !== 1 && type !== 2 || value.byteLength > 20) throw new Error('Invalid Bluetooth frame');
+            session.payload += session.decoder.decode(
+                new Uint8Array(value.buffer, value.byteOffset + 1, value.byteLength - 1), { stream: type === 1 });
+            if (session.payload.length > 4096) throw new Error('Bluetooth message too long');
+            if (type === 2) {
+                acceptPhonePacket(session.payload);
+                session.payload = '';
+                break;
+            }
+        }
+        setTimeout(() => pollBluetooth(session), 350);
+    } catch (error) {
+        endBluetoothSession(session, 'Bluetooth disconnected. Reconnect to PINX.');
+    }
+}
+
+byId('generateBluetoothCode').addEventListener('click', () => {
+    if (bluetoothSession || bluetoothConnecting) return;
+    if (pairedWithAndroid || !window.isSecureContext || !navigator.bluetooth) {
+        bluetoothStatus.textContent = 'Open the HTTPS calculator in Chrome on Android to pair over Bluetooth.';
+        return;
+    }
+    const random = new Uint32Array(1);
+    do { crypto.getRandomValues(random); } while (random[0] >= 4294000000);
+    const code = String(random[0] % 1000000).padStart(6, '0');
+    byId('bluetoothCode').value = code;
+    bluetoothStatus.textContent = 'Enter this code in PINX → Void, start Bluetooth pairing, then tap Connect Bluetooth here.';
+});
+
+bluetoothButton.addEventListener('click', async () => {
+    if (bluetoothSession) {
+        endBluetoothSession(bluetoothSession, 'Bluetooth disconnected.');
+        return;
+    }
+    if (bluetoothConnecting) return;
+    if (pairedWithAndroid) {
+        bluetoothStatus.textContent = 'Open the HTTPS calculator page to switch from Wi-Fi to Bluetooth.';
+        return;
+    }
+    if (!window.isSecureContext || !navigator.bluetooth) {
+        bluetoothStatus.textContent = 'Bluetooth pairing requires the HTTPS calculator in a browser with Web Bluetooth, such as Chrome on Android.';
+        return;
+    }
+    const code = byId('bluetoothCode').value.trim();
+    if (!/^\d{6}$/.test(code)) {
+        bluetoothStatus.textContent = 'Generate a code here or enter the six-digit code shown in PINX → Void.';
+        return;
+    }
+
+    bluetoothConnecting = true;
+    bluetoothButton.disabled = true;
+    bluetoothStatus.textContent = 'Choose the phone advertising its Void session.';
+    let device;
+    try {
+        device = await navigator.bluetooth.requestDevice({ filters: [{ services: [voidBluetoothService] }] });
+        const gatt = await device.gatt.connect();
+        const service = await gatt.getPrimaryService(voidBluetoothService);
+        const read = await service.getCharacteristic(voidBluetoothRead);
+        const write = await service.getCharacteristic(voidBluetoothWrite);
+        await write.writeValueWithResponse(new TextEncoder().encode('P' + code));
+        const session = { device, read, write, operation: Promise.resolve(), decoder: new TextDecoder(), payload: '' };
+        bluetoothSession = session;
+        outgoingDigits = '';
+        device.addEventListener('gattserverdisconnected', () =>
+            endBluetoothSession(session, 'Bluetooth disconnected. Reconnect to PINX.'), { once: true });
+        bluetoothButton.textContent = 'Disconnect Bluetooth';
+        bluetoothStatus.textContent = 'Connected to PINX over Bluetooth.';
+        byId('bluetoothCode').value = '';
+        pollBluetooth(session);
+    } catch (error) {
+        if (device?.gatt?.connected) device.gatt.disconnect();
+        bluetoothStatus.textContent = 'Could not pair. Check the code and Bluetooth, then try again.';
+    } finally {
+        bluetoothConnecting = false;
+        bluetoothButton.disabled = false;
+    }
+});
 </script>
 </body>
 </html>
