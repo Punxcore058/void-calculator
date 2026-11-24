@@ -79,20 +79,11 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <details>
 <summary>Reveal</summary>
 <label>Trigger <select id="trigger"><option value="manual">Manual</option><option value="equals">Equals</option><option value="swipe">Swipe display</option></select></label>
-<label>Reveal <select id="mode"><option value="birthday">Birthday details</option><option value="number">Calculator number</option></select></label>
 <label>Reveal sound <input id="sound" type="checkbox" checked></label>
 <label>Reduced motion <input id="motion" type="checkbox"></label>
 <p>For a birthday reveal, enter MMDDYYYY. Results show the date, age, and zodiac sign. Celebrity matches are omitted because this app has no verified celebrity birthday data.</p>
 <div class="actions"><button id="sample" type="button">Try sample</button><button id="manual" type="button">Reveal now</button></div>
 <p id="status" role="status"></p>
-</details>
-<details>
-<summary>Advanced</summary>
-<label>Seconds per digit <input id="speed" type="number" min=".4" max="4" step=".1" value=".8"></label>
-<label>Starting delay (seconds) <input id="delay" type="number" min="0" max="10" step=".5" value="0"></label>
-<label>Enable fixed number force <input id="forceEnabled" type="checkbox"></label>
-<label>Forced number <input id="forceNumber" type="text" inputmode="decimal" value="1089"></label>
-<label>Display force on Equals press <input id="forcePress" type="number" min="1" max="20" step="1" value="3"></label>
 </details>
 </dialog>
 <script>
@@ -117,7 +108,7 @@ async function toggleFullscreen() {
         fullscreenStatus.textContent = 'Fullscreen could not be changed. Check your browser permissions and try again.';
     }
 }
-const controls = ['trigger', 'mode', 'speed', 'delay', 'motion', 'sound', 'forceEnabled', 'forceNumber', 'forcePress', 'floatFinalDigit'].map(byId);
+const controls = ['trigger', 'motion', 'sound', 'floatFinalDigit'].map(byId);
 try {
     const saved = JSON.parse(localStorage.getItem('pinx-web-settings') || '{}');
     for (const field of controls) {
@@ -151,7 +142,7 @@ function exitCalculator() {
     }, 0);
 }
 let entry = '0', left = null, operator = '', fresh = false, birthdayInput = '', busy = false;
-let revealed = false, audio, equalsCount = 0;
+let revealed = false, audio;
 const keyButtons = new Map();
 const operators = { '÷': (a,b) => b !== 0 ? a / b : 0, '×': (a,b) => a*b, '−': (a,b) => a-b, '+': (a,b) => a+b };
 for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','2','3','+','0','.','=']) {
@@ -285,26 +276,20 @@ function press(key) {
     outgoingDigits = '';
     if (revealed) { revealed = false; show(entry); }
     if (key === 'AC') {
-        entry = '0'; left = null; operator = ''; fresh = false; birthdayInput = ''; equalsCount = 0;
+        entry = '0'; left = null; operator = ''; fresh = false; birthdayInput = '';
     } else if (key in operators) {
         rememberBirthday();
         if (operator && !fresh) entry = normalize(operators[operator](left, Number(entry)));
         left = Number(entry); operator = key; fresh = true;
     } else if (key === '=') {
         rememberBirthday();
-        let forced = false;
         if (left !== null && operator) {
-            equalsCount++;
-            const target = byId('forceNumber').value.trim();
-            const forcePress = Math.round(seconds('forcePress', 3, 1, 20));
-            forced = byId('forceEnabled').checked && equalsCount === forcePress &&
-                /^-?\d+(?:\.\d+)?$/.test(target) && Number.isFinite(Number(target));
-            entry = forced ? target : normalize(operators[operator](left, Number(entry)));
+            entry = normalize(operators[operator](left, Number(entry)));
         }
         left = null; operator = ''; fresh = true;
         for (const name of Object.keys(operators)) keyButtons.get(name).setAttribute('aria-pressed', 'false');
         if (byId('trigger').value === 'equals') {
-            const prediction = getPrediction() || (forced ? numberPrediction() : null);
+            const prediction = getPrediction();
             if (prediction) { reveal(prediction); return; }
         }
     } else if (key === '%') {
@@ -324,10 +309,6 @@ function press(key) {
     }
     for (const name of Object.keys(operators)) keyButtons.get(name).setAttribute('aria-pressed', String(name === operator));
     show(entry);
-}
-function numberPrediction() {
-    const digits = entry.replace(/\D/g, '');
-    return Number.isFinite(Number(entry)) && digits ? { digits, result: entry } : null;
 }
 const zodiacSigns = ['Capricorn', 'Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini',
     'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius'];
@@ -357,7 +338,6 @@ function birthdayPrediction(text) {
     };
 }
 function getPrediction() {
-    if (byId('mode').value === 'number') return numberPrediction();
     return birthdayPrediction(birthdayDigits(entry) || birthdayInput);
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -370,10 +350,6 @@ function chime() {
     gain.gain.setValueAtTime(.1, now);
     gain.gain.exponentialRampToValueAtTime(.001, now + .28);
     tone.connect(gain); gain.connect(audio.destination); tone.start(); tone.stop(now + .3);
-}
-function seconds(id, fallback, min, max) {
-    const number = byId(id).valueAsNumber;
-    return Math.min(max, Math.max(min, Number.isFinite(number) ? number : fallback));
 }
 async function playWebGlitch() {
     const overlay = byId('glitchOverlay');
@@ -428,7 +404,7 @@ async function reveal(prediction, incoming = false) {
     const reduced = byId('motion').checked || matchMedia('(prefers-reduced-motion: reduce)').matches;
     const transferDelay = Number(prediction.digitDelay);
     const interval = (incoming && Number.isInteger(transferDelay) && transferDelay >= 1 && transferDelay <= 4
-        ? transferDelay : seconds('speed', .8, .4, 4)) * 1000;
+        ? transferDelay : .8) * 1000;
     try {
         if (continuingHandoff) {
             await finishPredictionHandoff(prediction.result, reduced);
@@ -436,7 +412,6 @@ async function reveal(prediction, incoming = false) {
             return;
         }
         show(zodiacOnly ? '' : '0');
-        if (!incoming) await pause(seconds('delay', 0, 0, 10) * 1000);
         let formed = '';
         for (const digit of zodiacOnly ? '' : prediction.digits) {
             await pause(interval);
@@ -475,7 +450,7 @@ byId('sample').onclick = () => reveal(birthdayPrediction('12051994'));
 byId('manual').onclick = () => {
     const prediction = getPrediction();
     if (prediction) reveal(prediction);
-    else byId('status').textContent = 'Enter a valid birthday in MMDDYYYY format or choose Calculator number.';
+    else byId('status').textContent = 'Enter a valid birthday in MMDDYYYY format.';
 };
 document.addEventListener('keydown', event => {
     if (event.altKey && event.key.toLowerCase() === 's') {
