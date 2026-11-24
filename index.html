@@ -36,7 +36,7 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 #settings details{border-top:1px solid #393939;padding:12px 0}
 #settings summary{cursor:pointer;font-weight:600;padding:4px 0}
 #settings p:empty{display:none}
-#settings label[for=pairUrl]{margin-bottom:6px}
+
 .open-pinx{display:inline-block;padding:10px 14px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
 .pair-controls{display:flex;gap:8px}.pair-controls input{flex:1;min-width:0;max-width:none}
 .glitch-overlay{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;
@@ -59,20 +59,12 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <details open>
 <summary>Phone pairing</summary>
 <p><a class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
-<p>On your phone, choose <strong>Void → Pair web calculator</strong> and paste its link below.</p>
-<form id="pairForm">
-<label for="pairUrl">Phone pairing link</label>
-<div class="pair-controls">
-<input id="pairUrl" type="url" inputmode="url" autocomplete="off" required placeholder="http://…">
-<button type="submit">Connect</button>
-</div>
-<p id="pairStatus" role="status"></p>
-</form>
+<p>Opening this page from PINX's Wi-Fi pairing link connects automatically. For Bluetooth, tap <strong>Pair web calculator over Bluetooth</strong> in Void and enter the six-digit code here.</p>
+<p id="pairStatus" role="status" hidden></p>
 <div class="pair-controls">
 <input id="bluetoothCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="Bluetooth pairing code" placeholder="6-digit code">
 <button id="bluetoothConnect" type="button">Connect Bluetooth</button>
 </div>
-<button id="generateBluetoothCode" type="button">Generate code</button>
 <p id="bluetoothStatus" role="status"></p>
 <label>Float the final digit on phone <input id="floatFinalDigit" type="checkbox" checked></label>
 </details>
@@ -448,18 +440,6 @@ function isPairingLink(url) {
         /^\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/$/i.test(url.pathname);
 }
 
-byId('pairForm').addEventListener('submit', event => {
-    event.preventDefault();
-    try {
-        const url = new URL(byId('pairUrl').value.trim());
-        if (isPairingLink(url)) {
-            location.assign(url.href);
-            return;
-        }
-    } catch (error) {}
-    byId('pairStatus').textContent = 'Paste the full HTTP link shown by PINX, including the port and pairing code.';
-});
-
 let pendingReceived = '';
 let pendingReveal = null;
 
@@ -499,6 +479,7 @@ function updatePairedDelay(delay) {
 }
 
 if (pairedWithAndroid) {
+    byId('pairStatus').hidden = false;
     byId('pairStatus').textContent = 'Checking phone connection…';
     async function receiveDigits() {
         try {
@@ -575,19 +556,6 @@ async function pollBluetooth(session) {
     }
 }
 
-byId('generateBluetoothCode').addEventListener('click', () => {
-    if (bluetoothSession || bluetoothConnecting) return;
-    if (pairedWithAndroid || !window.isSecureContext || !navigator.bluetooth) {
-        bluetoothStatus.textContent = 'Open the HTTPS calculator in Chrome on Android to pair over Bluetooth.';
-        return;
-    }
-    const random = new Uint32Array(1);
-    do { crypto.getRandomValues(random); } while (random[0] >= 4294000000);
-    const code = String(random[0] % 1000000).padStart(6, '0');
-    byId('bluetoothCode').value = code;
-    bluetoothStatus.textContent = 'Enter this code in PINX → Void, start Bluetooth pairing, then tap Connect Bluetooth here.';
-});
-
 bluetoothButton.addEventListener('click', async () => {
     if (bluetoothSession) {
         endBluetoothSession(bluetoothSession, 'Bluetooth disconnected.');
@@ -604,7 +572,7 @@ bluetoothButton.addEventListener('click', async () => {
     }
     const code = byId('bluetoothCode').value.trim();
     if (!/^\d{6}$/.test(code)) {
-        bluetoothStatus.textContent = 'Generate a code here or enter the six-digit code shown in PINX → Void.';
+        bluetoothStatus.textContent = 'Enter the six-digit code shown in PINX → Void.';
         return;
     }
 
