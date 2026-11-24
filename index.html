@@ -68,10 +68,10 @@ input,select{max-width:55%;padding:6px} .actions{display:flex;justify-content:sp
 <details>
 <summary>Reveal</summary>
 <label>Trigger <select id="trigger"><option value="manual">Manual</option><option value="equals">Equals</option><option value="swipe">Swipe display</option></select></label>
-<label>Reveal <select id="mode"><option value="birthday">Zodiac only</option><option value="number">Calculator number</option></select></label>
+<label>Reveal <select id="mode"><option value="birthday">Birthday details</option><option value="number">Calculator number</option></select></label>
 <label>Reveal sound <input id="sound" type="checkbox" checked></label>
 <label>Reduced motion <input id="motion" type="checkbox"></label>
-<p>For a zodiac reveal, enter a birthday in MMDDYYYY format.</p>
+<p>For a birthday reveal, enter MMDDYYYY. Results show the date, age, and zodiac sign. Celebrity matches are omitted because this app has no verified celebrity birthday data.</p>
 <div class="actions"><button id="sample" type="button">Try sample</button><button id="manual" type="button">Reveal now</button></div>
 <p id="status" role="status"></p>
 </details>
@@ -321,15 +321,33 @@ function numberPrediction() {
 const zodiacSigns = ['Capricorn', 'Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini',
     'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius'];
 
-function getPrediction() {
-    if (byId('mode').value === 'number') return numberPrediction();
-    const digits = birthdayDigits(entry) || birthdayInput;
+function birthdayPrediction(text) {
+    const digits = birthdayDigits(text);
     if (!digits) return null;
     const month = Number(digits.slice(0,2)), day = Number(digits.slice(2,4)), year = Number(digits.slice(4));
-    if (month < 1 || month > 12 || year < 1900 || year > new Date().getFullYear() ||
-        day < 1 || day > new Date(year, month, 0).getDate()) return null;
+    if (month < 1 || month > 12 || year < 1900 || day < 1 ||
+        day > new Date(year, month, 0).getDate()) return null;
+    const birthDate = new Date(year, month - 1, day);
+    const today = new Date();
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (birthDate > todayDate) return null;
+    let age = today.getFullYear() - year;
+    if (today.getMonth() < month - 1 ||
+        (today.getMonth() === month - 1 && today.getDate() < day)) age--;
     const cutoffs = [20,19,21,20,21,21,23,23,23,23,22,22];
-    return { digits, result: zodiacSigns[(month - 1 + (day >= cutoffs[month - 1] ? 1 : 0)) % 12] };
+    const birthday = new Intl.DateTimeFormat(undefined, {
+        month: 'long', day: 'numeric', year: 'numeric'
+    }).format(birthDate);
+    return {
+        digits,
+        result: zodiacSigns[(month - 1 + (day >= cutoffs[month - 1] ? 1 : 0)) % 12],
+        birthday,
+        age
+    };
+}
+function getPrediction() {
+    if (byId('mode').value === 'number') return numberPrediction();
+    return birthdayPrediction(birthdayDigits(entry) || birthdayInput);
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 function chime() {
@@ -423,7 +441,9 @@ async function reveal(prediction, incoming = false) {
         await pause(400);
         if (!quiet) chime();
         if (!reduced) await playWebGlitch();
-        show(prediction.result);
+        show(prediction.birthday
+            ? `Birthday: ${prediction.birthday}\nAge: ${prediction.age}\nZodiac: ${prediction.result}`
+            : prediction.result);
         if (!reduced && value.animate) {
             await value.animate([{opacity:.2, transform:'translateY(5px)'},{opacity:1, transform:'translateY(0)'}],
                 {duration:440,easing:'ease-out'}).finished;
@@ -440,7 +460,7 @@ function openSettings() {
     settings.showModal();
 }
 byId('done').onclick = () => settings.close();
-byId('sample').onclick = () => reveal({ digits:'12051994', result:'Sagittarius' });
+byId('sample').onclick = () => reveal(birthdayPrediction('12051994'));
 byId('manual').onclick = () => {
     const prediction = getPrediction();
     if (prediction) reveal(prediction);
