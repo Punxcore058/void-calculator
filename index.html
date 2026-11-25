@@ -85,11 +85,12 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 <details open>
 <summary id="pairingTitle">Phone pairing</summary>
 <p><a id="openPinx" class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
-<p id="wifiPairHelp">Open this page from PINX's Wi-Fi pairing link to connect automatically. Keep both devices on the same Wi-Fi network and allow Local Network access if prompted.</p>
-<p id="bluetoothPairHelp">Bluetooth pairing is available on supported Android browsers. Enter PINX's current six-digit code; it changes when pairing restarts. Stop Wi-Fi pairing before switching modes.</p>
+<p id="wifiPairHelp">Open the Wi-Fi pairing link from the PINX app, enter PIN 123456, and keep both phones on the same Wi-Fi network.</p>
+<p id="bluetoothPairHelp">Bluetooth pairing is available on supported Android browsers. Enter the same six-digit PIN, 123456. Stop Wi-Fi pairing before switching modes.</p>
 <p id="pairStatus" role="status" hidden></p>
 <div class="pair-controls">
-<input id="bluetoothCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="Bluetooth pairing code" placeholder="6-digit code">
+<input id="pairingCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="PINX pairing code" placeholder="6-digit PIN">
+<button id="wifiConnect" type="button" hidden>Connect Wi-Fi</button>
 <button id="bluetoothConnect" type="button">Connect Bluetooth</button>
 </div>
 <p id="bluetoothStatus" role="status"></p>
@@ -99,8 +100,8 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 <summary>iPhone setup and install (tap ± three times)</summary>
 <p>On iPhone, open this page in Safari, tap Share, then Add to Home Screen and confirm Add. iOS requires this confirmation; the app cannot install itself. On Android or desktop, use your browser menu to install PINX or add it to your Home Screen.</p>
 <p><button id="safariShare" type="button" hidden>Open Safari share sheet</button></p>
-<p>To connect on iPhone, start PINX Wi-Fi pairing and open its pairing link or QR code while the iPhone is on the same Wi-Fi network. Allow Local Network access if prompted. iPhone Safari does not support Web Bluetooth, so use Wi-Fi pairing.</p>
-<p>If GitHub Pages is blocked from reaching PINX's local HTTP address, iOS browser security prevents that connection; the PWA cannot bypass it. The calculator remains available offline.</p>
+<p>To connect on iPhone, start Wi-Fi pairing in the PINX Android app, open its pairing link or QR code, then enter 123456. The link serves the calculator from PINX on the local network. iPhone Safari does not support Web Bluetooth, so use Wi-Fi pairing.</p>
+<p>The GitHub Pages copy cannot pair directly with a local HTTP device from iPhone Safari; use PINX's local pairing link. The calculator remains available offline.</p>
 <p>After the first successful load, the calculator interface and its app icons are cached for offline access. Phone pairing still requires a working connection to PINX on the same Wi-Fi network or a supported Bluetooth browser.</p>
 <p id="installStatus" role="status"></p>
 </details>
@@ -251,7 +252,8 @@ function show(text) {
     fit();
 }
 window.addEventListener('resize', fit);
-const pairedOverWifi = isPairingLink(new URL(location.href));
+const hasWifiPairingLink = isPairingLink(new URL(location.href));
+let pairedOverWifi = false;
 let pendingDigitSend = Promise.resolve();
 let pairedDigitDelay = 1;
 let bluetoothSession = null;
@@ -576,29 +578,63 @@ function updatePairedDelay(delay) {
     if (Number.isInteger(delay) && delay >= 1 && delay <= 4) pairedDigitDelay = delay;
 }
 
-if (pairedOverWifi) {
-    let hasConnected = false;
-    setConnectionStatus('Connecting to PINX over Wi-Fi…');
-    async function receiveDigits() {
-        try {
-            const response = await fetch('digits', { cache: 'no-store' });
-            if (!response.ok) throw new Error('PINX pairing request failed.');
-            updatePairedDelay(Number(response.headers.get('X-PINX-Digit-Delay')));
-            hasConnected = true;
-            setConnectionState(true);
-            setConnectionStatus('Connected to PINX over Wi-Fi');
-            acceptPhonePacket(await response.text());
-        } catch (error) {
-            setConnectionState(false);
-            setConnectionStatus(hasConnected
-                ? 'Connection lost'
-                : 'PINX unavailable — check Wi-Fi');
-        } finally {
-            setTimeout(receiveDigits, 350);
-        }
+let wifiConnectionConfirmed = false;
+let wifiConnecting = false;
+async function receiveWifiDigits() {
+    if (!pairedOverWifi) return;
+    try {
+        const response = await fetch('digits', { cache: 'no-store' });
+        if (!response.ok) throw new Error('PINX Wi-Fi session unavailable');
+        updatePairedDelay(Number(response.headers.get('X-PINX-Digit-Delay')));
+        wifiConnectionConfirmed = true;
+        setConnectionState(true);
+        setConnectionStatus('Connected to PINX over Wi-Fi');
+        acceptPhonePacket(await response.text());
+    } catch (error) {
+        setConnectionState(false);
+        setConnectionStatus(wifiConnectionConfirmed
+            ? 'Connection lost — retrying…'
+            : 'PINX unavailable — check Wi-Fi');
+    } finally {
+        if (pairedOverWifi) setTimeout(receiveWifiDigits, 350);
     }
-    receiveDigits();
 }
+
+byId('wifiConnect').addEventListener('click', async () => {
+    if (!hasWifiPairingLink || wifiConnecting || pairedOverWifi) return;
+    const code = byId('pairingCode').value.trim();
+    if (!/^\d{6}$/.test(code)) {
+        setConnectionStatus('Enter the six-digit PIN 123456.');
+        return;
+    }
+    wifiConnecting = true;
+    byId('wifiConnect').disabled = true;
+    setConnectionStatus('Checking PINX Wi-Fi PIN…');
+    try {
+        const response = await fetch('pair', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: code,
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            setConnectionStatus(response.status === 401
+                ? 'PINX did not accept that PIN. Check it and try again.'
+                : 'PINX pairing request failed. Reopen the PINX pairing link.');
+            return;
+        }
+        pairedOverWifi = true;
+        byId('pairingCode').value = '';
+        byId('wifiConnect').textContent = 'Connected over Wi-Fi';
+        setConnectionStatus('PIN accepted. Connecting to PINX…');
+        void receiveWifiDigits();
+    } catch (error) {
+        setConnectionStatus('Could not reach PINX. Check Wi-Fi and reopen its pairing link.');
+    } finally {
+        wifiConnecting = false;
+        byId('wifiConnect').disabled = false;
+    }
+});
 
 const voidBluetoothService = 'f307bcce-d82d-4c4b-a123-1cc717069ad1';
 const voidBluetoothRead = 'f307bcce-d82d-4c4b-a123-1cc717069ad2';
@@ -609,16 +645,19 @@ if (isIOSBrowser) {
     byId('pairingTitle').textContent = 'iPhone Wi-Fi pairing';
     byId('openPinx').hidden = true;
     byId('openPinx').parentElement.hidden = true;
-    bluetoothButton.parentElement.hidden = true;
+    bluetoothButton.hidden = true;
     byId('bluetoothPairHelp').hidden = true;
-    byId('wifiPairHelp').textContent = 'Start PINX Wi-Fi pairing, then open its pairing link or QR code on this iPhone while both devices are on the same network. Allow Local Network access if prompted.';
-    bluetoothStatus.textContent = 'iPhone pairing uses Wi-Fi. Open PINX’s Wi-Fi pairing link on the same network and allow Local Network access if prompted.';
-    if (!pairedOverWifi) setConnectionStatus('Not connected. Open PINX’s Wi-Fi pairing link on this iPhone.');
+    byId('wifiPairHelp').textContent = 'Start Wi-Fi pairing in PINX, open its local pairing link on this iPhone, then enter 123456.';
+    bluetoothStatus.textContent = 'iPhone pairing uses Wi-Fi. Enter PIN 123456 from PINX’s local pairing link.';
+    byId('wifiConnect').hidden = !hasWifiPairingLink;
+    byId('pairingCode').parentElement.hidden = !hasWifiPairingLink;
+    if (!hasWifiPairingLink) setConnectionStatus('Open PINX’s local Wi-Fi pairing link first.');
 } else if (isAndroidBrowser) {
     byId('pairingTitle').textContent = 'Android Bluetooth pairing';
     byId('wifiPairHelp').hidden = true;
-    byId('bluetoothPairHelp').textContent = 'Enter PINX’s current six-digit code, then choose Connect Bluetooth. Keep Bluetooth pairing active in PINX while connected.';
+    byId('bluetoothPairHelp').textContent = 'Enter PIN 123456, then choose Bluetooth or Wi-Fi when using PINX’s local pairing link.';
 }
+byId('wifiConnect').hidden = !hasWifiPairingLink;
 
 function bluetoothOperation(session, operation) {
     const next = session.operation.then(() => {
@@ -679,7 +718,7 @@ bluetoothButton.addEventListener('click', async () => {
         return;
     }
     if (bluetoothConnecting) return;
-    if (pairedOverWifi) {
+    if (hasWifiPairingLink) {
         bluetoothStatus.textContent = isIOSBrowser
             ? 'iPhone browsers do not support Web Bluetooth. Use PINX Wi-Fi pairing on the same network.'
             : 'Open the HTTPS calculator page to switch from Wi-Fi to Bluetooth.';
@@ -697,9 +736,9 @@ bluetoothButton.addEventListener('click', async () => {
         bluetoothStatus.textContent = 'Bluetooth pairing requires the HTTPS calculator in a browser with Web Bluetooth, such as Chrome on Android.';
         return;
     }
-    const code = byId('bluetoothCode').value.trim();
+    const code = byId('pairingCode').value.trim();
     if (!/^\d{6}$/.test(code)) {
-        bluetoothStatus.textContent = 'Enter the six-digit code shown in PINX → Void.';
+        bluetoothStatus.textContent = 'Enter PIN 123456 shown in PINX.';
         return;
     }
 
@@ -726,12 +765,12 @@ bluetoothButton.addEventListener('click', async () => {
             endBluetoothSession(session, 'Bluetooth disconnected. Reconnect to PINX.'), { once: true });
         bluetoothButton.textContent = 'Disconnect Bluetooth';
         bluetoothStatus.textContent = 'Connected to PINX over Bluetooth.';
-        byId('bluetoothCode').value = '';
+        byId('pairingCode').value = '';
         pollBluetooth(session);
     } catch (error) {
         if (device?.gatt?.connected) device.gatt.disconnect();
         if (phase === 'checking the pairing code') {
-            bluetoothStatus.textContent = 'PINX rejected the code or the Bluetooth link dropped. Enter the current six-digit code shown in PINX and keep its pairing active.';
+            bluetoothStatus.textContent = 'PINX rejected PIN 123456 or the Bluetooth link dropped. Keep pairing active and try again.';
         } else if (phase === 'device selection' && error?.name === 'NotFoundError') {
             bluetoothStatus.textContent = 'No PINX device was selected. Start Bluetooth pairing in PINX, then choose it here.';
         } else if (error?.name === 'NotAllowedError') {
