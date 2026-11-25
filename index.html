@@ -99,8 +99,10 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 <label>Float the final digit on phone <input id="floatFinalDigit" type="checkbox" checked></label>
 </details>
 <details id="installGuidance">
-<summary>Install PINX (tap ± three times)</summary>
-<p>On Android or desktop, use your browser menu to install PINX or add it to your Home Screen. On iPhone, open this page in Safari, tap Share, then Add to Home Screen and confirm.</p>
+<summary>iPhone setup and install (tap ± three times)</summary>
+<p>On iPhone, open this page in Safari, tap Share, then Add to Home Screen and confirm Add. iOS requires this confirmation; the app cannot install itself. On Android or desktop, use your browser menu to install PINX or add it to your Home Screen.</p>
+<p>To connect on iPhone, start PINX Wi-Fi pairing and open its pairing link or QR code while the iPhone is on the same Wi-Fi network. Allow Local Network access if prompted. iPhone Safari does not support Web Bluetooth, so use Wi-Fi pairing.</p>
+<p>If GitHub Pages is blocked from reaching PINX's local HTTP address, iOS browser security prevents that connection; the PWA cannot bypass it. The calculator remains available offline.</p>
 <p>After the first successful load, the calculator interface and its app icons are cached for offline access. Phone pairing still requires a working connection to PINX on the same Wi-Fi network or a supported Bluetooth browser.</p>
 <p id="installStatus" role="status"></p>
 </details>
