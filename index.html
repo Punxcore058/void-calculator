@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#090909">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Calculator">
+<meta name="apple-mobile-web-app-title" content="PINX">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Calculator</title>
-<link rel="manifest" href="./manifest.webmanifest">
+<title>PINX Void Calculator</title>
+<link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#090909;color:#fff}
@@ -17,6 +17,12 @@ body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center
     padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
         max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
 main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
+.app-status{width:min(100%,390px);margin-bottom:18px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.wordmark{font-size:14px;letter-spacing:.14em;color:#aaa}.wordmark strong{display:block;color:#ff9f0a;font-size:20px;letter-spacing:.28em}
+.status-items{display:grid;gap:4px;text-align:right;font-size:11px;letter-spacing:.06em;color:#aaa}
+.status-items span:first-child{color:#8ce99a}
+.status-items span:last-child{color:#ffcb6b}
+#installApp{border:0;border-radius:10px;background:#282828;padding:8px 12px;min-height:40px}
 button,input,select{font:inherit} button{cursor:pointer;color:inherit}
 button,a,summary{touch-action:manipulation}
 header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px;min-height:44px}
@@ -74,6 +80,11 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 </head>
 <body>
 <div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
+<header class="app-status" aria-label="PINX app status">
+<div class="wordmark">WIRELESS SYSTEM<strong>P I N X</strong></div>
+<div class="status-items"><span id="systemStatus">● SYSTEM READY</span><span id="offlineStatus">OFFLINE ACCESS · CHECKING</span></div>
+<button id="installApp" type="button" hidden>Install</button>
+</header>
 <main>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
 <p id="fullscreenStatus" role="status" aria-live="polite"></p>
@@ -92,6 +103,11 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 </div>
 <p id="bluetoothStatus" role="status"></p>
 <label>Float the final digit on phone <input id="floatFinalDigit" type="checkbox" checked></label>
+</details>
+<details>
+<summary>Install and offline access</summary>
+<p>On Android or desktop, use your browser menu to install PINX or add it to your Home Screen. On iPhone, open this page in Safari, tap Share, then Add to Home Screen and confirm.</p>
+<p>After the first successful load, the calculator interface and its app icons are cached for offline access. Phone pairing still requires a working connection to PINX on the same Wi-Fi network or a supported Bluetooth browser.</p>
 </details>
 <details>
 <summary>Reveal</summary>
@@ -704,6 +720,53 @@ bluetoothButton.addEventListener('click', async () => {
         bluetoothButton.disabled = false;
     }
 });
+
+const installButton = byId('installApp');
+const offlineStatus = byId('offlineStatus');
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    installPrompt = event;
+    installButton.hidden = false;
+});
+installButton.addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installButton.disabled = true;
+    try {
+        await installPrompt.prompt();
+        await installPrompt.userChoice;
+    } catch (error) {
+        byId('systemStatus').textContent = '● INSTALL PROMPT UNAVAILABLE';
+        window.setTimeout(updateNetworkStatus, 4000);
+        console.warn('Could not show the PINX installation prompt.', error);
+    } finally {
+        installPrompt = null;
+        installButton.hidden = true;
+        installButton.disabled = false;
+    }
+});
+window.addEventListener('appinstalled', () => {
+    installButton.hidden = true;
+    offlineStatus.textContent = 'OFFLINE ACCESS · INSTALLED';
+});
+function updateNetworkStatus() {
+    byId('systemStatus').textContent = navigator.onLine ? '● SYSTEM READY' : '● SYSTEM READY · OFFLINE';
+}
+window.addEventListener('online', updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);
+updateNetworkStatus();
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .then(() => navigator.serviceWorker.ready)
+        .then(() => {
+            offlineStatus.textContent = 'OFFLINE ACCESS · READY';
+        }).catch(error => {
+            offlineStatus.textContent = 'OFFLINE ACCESS · UNAVAILABLE';
+            console.warn('Could not register the PINX offline app.', error);
+        });
+} else {
+    offlineStatus.textContent = 'OFFLINE ACCESS · UNSUPPORTED';
+}
 </script>
 </body>
 </html>
