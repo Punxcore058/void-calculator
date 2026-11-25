@@ -16,13 +16,11 @@
 body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;
     padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
         max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
-main{width:min(100%,390px)} header{display:flex;align-items:center;justify-content:space-between;color:#aaa}
-.app-status{width:min(100%,390px);margin-bottom:18px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
-.wordmark{font-size:14px;letter-spacing:.14em;color:#aaa}.wordmark strong{display:block;color:#ff9f0a;font-size:20px;letter-spacing:.28em}
-.status-items{display:grid;gap:4px;text-align:right;font-size:11px;letter-spacing:.06em;color:#aaa}
-.status-items span:first-child{color:#8ce99a}
-.status-items span:last-child{color:#ffcb6b}
-#installApp{border:0;border-radius:10px;background:#282828;padding:8px 12px;min-height:40px}
+main{width:min(100%,390px)}
+.connection-indicator{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));
+    right:max(10px,env(safe-area-inset-right));width:10px;height:10px;border-radius:50%;
+    background:#4ade80;box-shadow:0 0 8px #4ade8080}
+.connection-indicator[hidden]{display:none}
 button,input,select{font:inherit} button{cursor:pointer;color:inherit}
 button,a,summary{touch-action:manipulation}
 header button,dialog button{border:0;border-radius:10px;background:#282828;padding:10px 14px;min-height:44px}
@@ -80,11 +78,7 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 </head>
 <body>
 <div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
-<header class="app-status" aria-label="PINX app status">
-<div class="wordmark">WIRELESS SYSTEM<strong>P I N X</strong></div>
-<div class="status-items"><span id="systemStatus">● SYSTEM READY</span><span id="offlineStatus">OFFLINE ACCESS · CHECKING</span></div>
-<button id="installApp" type="button" hidden>Install</button>
-</header>
+<span id="connectionIndicator" class="connection-indicator" role="status" aria-label="Not connected to PINX" title="Not connected to PINX"></span>
 <main>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
 <p id="fullscreenStatus" role="status" aria-live="polite"></p>
@@ -104,10 +98,11 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 <p id="bluetoothStatus" role="status"></p>
 <label>Float the final digit on phone <input id="floatFinalDigit" type="checkbox" checked></label>
 </details>
-<details>
-<summary>Install and offline access</summary>
+<details id="installGuidance">
+<summary>Install PINX (tap ± three times)</summary>
 <p>On Android or desktop, use your browser menu to install PINX or add it to your Home Screen. On iPhone, open this page in Safari, tap Share, then Add to Home Screen and confirm.</p>
 <p>After the first successful load, the calculator interface and its app icons are cached for offline access. Phone pairing still requires a working connection to PINX on the same Wi-Fi network or a supported Bluetooth browser.</p>
+<p id="installStatus" role="status"></p>
 </details>
 <details>
 <summary>Reveal</summary>
@@ -126,6 +121,14 @@ const isIOSBrowser = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const screen = byId('screen'), value = byId('value'), keypad = byId('keys'), settings = byId('settings');
 const pairStatus = byId('pairStatus');
+const connectionIndicator = byId('connectionIndicator');
+function setConnectionState(connected) {
+    const message = connected ? 'Connected to PINX' : 'Not connected to PINX';
+    connectionIndicator.hidden = connected;
+    connectionIndicator.setAttribute('aria-label', message);
+    connectionIndicator.title = message;
+}
+setConnectionState(false);
 function setConnectionStatus(message) {
     if (pairStatus) {
         pairStatus.hidden = false;
@@ -189,8 +192,19 @@ function exitCalculator() {
 }
 let entry = '0', left = null, operator = '', fresh = false, birthdayInput = '', busy = false;
 let revealed = false, audio;
+let installPrompt = null, installTapCount = 0, installTapTimer;
 const keyButtons = new Map();
 const operators = { '÷': (a,b) => b !== 0 ? a / b : 0, '×': (a,b) => a*b, '−': (a,b) => a-b, '+': (a,b) => a+b };
+function registerInstallTap() {
+    clearTimeout(installTapTimer);
+    installTapCount++;
+    if (installTapCount === 3) {
+        installTapCount = 0;
+        void activateInstallation();
+    } else {
+        installTapTimer = window.setTimeout(() => { installTapCount = 0; }, 800);
+    }
+}
 for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','2','3','+','0','.','=']) {
     const button = document.createElement('button');
     button.className = 'key';
@@ -206,7 +220,16 @@ for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','
         button.setAttribute('aria-label', 'Exit app');
         button.title = 'Exit app';
     }
+    if (label === '±') {
+        button.setAttribute('aria-label', 'Toggle sign; tap three times to install PINX');
+        button.title = 'Toggle sign · tap three times to install PINX';
+    }
     button.addEventListener('click', () => {
+        if (label === '±') registerInstallTap();
+        else {
+            clearTimeout(installTapTimer);
+            installTapCount = 0;
+        }
         if (label === '.') void toggleFullscreen();
         press(label);
     });
@@ -573,9 +596,11 @@ if (pairedWithAndroid) {
             if (!response.ok) throw new Error('PINX pairing request failed.');
             updatePairedDelay(Number(response.headers.get('X-PINX-Digit-Delay')));
             hasConnected = true;
+            setConnectionState(true);
             setConnectionStatus('Connected to PINX');
             acceptPhonePacket(await response.text());
         } catch (error) {
+            setConnectionState(false);
             setConnectionStatus(hasConnected
                 ? 'Connection lost'
                 : 'PINX unavailable — check Wi-Fi');
@@ -614,6 +639,7 @@ function endBluetoothSession(session, message) {
     pendingReveal = null;
     outgoingDigits = '';
     if (session.device.gatt.connected) session.device.gatt.disconnect();
+    setConnectionState(false);
     bluetoothStatus.textContent = message;
     bluetoothButton.textContent = 'Connect Bluetooth';
 }
@@ -697,6 +723,7 @@ bluetoothButton.addEventListener('click', async () => {
         await write.writeValueWithResponse(new TextEncoder().encode('P' + code));
         const session = { device, read, write, operation: Promise.resolve(), decoder: new TextDecoder(), payload: '' };
         bluetoothSession = session;
+        setConnectionState(true);
         outgoingDigits = '';
         device.addEventListener('gattserverdisconnected', () =>
             endBluetoothSession(session, 'Bluetooth disconnected. Reconnect to PINX.'), { once: true });
@@ -721,51 +748,48 @@ bluetoothButton.addEventListener('click', async () => {
     }
 });
 
-const installButton = byId('installApp');
-const offlineStatus = byId('offlineStatus');
-let installPrompt = null;
 window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
     installPrompt = event;
-    installButton.hidden = false;
 });
-installButton.addEventListener('click', async () => {
-    if (!installPrompt) return;
-    installButton.disabled = true;
-    try {
-        await installPrompt.prompt();
-        await installPrompt.userChoice;
-    } catch (error) {
-        byId('systemStatus').textContent = '● INSTALL PROMPT UNAVAILABLE';
-        window.setTimeout(updateNetworkStatus, 4000);
-        console.warn('Could not show the PINX installation prompt.', error);
-    } finally {
+async function activateInstallation() {
+    const installStatus = byId('installStatus');
+    const guidance = byId('installGuidance');
+    if (installPrompt) {
+        const promptEvent = installPrompt;
         installPrompt = null;
-        installButton.hidden = true;
-        installButton.disabled = false;
+        try {
+            await promptEvent.prompt();
+            const choice = await promptEvent.userChoice;
+            installStatus.textContent = choice.outcome === 'accepted'
+                ? 'PINX was added to your Home Screen.'
+                : 'Installation was canceled.';
+        } catch (error) {
+            console.warn('Could not show the PINX installation prompt.', error);
+            openSettings();
+            guidance.open = true;
+            installStatus.textContent = 'Use your browser menu to install PINX or add it to your Home Screen.';
+        }
+        return;
     }
-});
-window.addEventListener('appinstalled', () => {
-    installButton.hidden = true;
-    offlineStatus.textContent = 'OFFLINE ACCESS · INSTALLED';
-});
-function updateNetworkStatus() {
-    byId('systemStatus').textContent = navigator.onLine ? '● SYSTEM READY' : '● SYSTEM READY · OFFLINE';
+
+    openSettings();
+    guidance.open = true;
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
+        installStatus.textContent = 'PINX is already installed.';
+    } else if (isIOSBrowser) {
+        installStatus.textContent = 'In Safari, tap Share > Add to Home Screen, then confirm Add.';
+    } else {
+        installStatus.textContent = 'Use your browser menu to choose Install app or Add to Home Screen.';
+    }
 }
-window.addEventListener('online', updateNetworkStatus);
-window.addEventListener('offline', updateNetworkStatus);
-updateNetworkStatus();
+window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    byId('installStatus').textContent = 'PINX was installed.';
+});
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js', { scope: './' })
-        .then(() => navigator.serviceWorker.ready)
-        .then(() => {
-            offlineStatus.textContent = 'OFFLINE ACCESS · READY';
-        }).catch(error => {
-            offlineStatus.textContent = 'OFFLINE ACCESS · UNAVAILABLE';
-            console.warn('Could not register the PINX offline app.', error);
-        });
-} else {
-    offlineStatus.textContent = 'OFFLINE ACCESS · UNSUPPORTED';
+        .catch(error => console.warn('Could not register the PINX offline app.', error));
 }
 </script>
 </body>
