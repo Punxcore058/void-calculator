@@ -58,26 +58,22 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 
 .open-pinx{display:inline-block;padding:10px 14px;min-height:44px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
 .pair-controls{display:flex;gap:8px}.pair-controls input{flex:1;min-width:0;max-width:none}
-.glitch-overlay{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;
-    background:linear-gradient(0deg,transparent 0 15%,rgba(255,40,110,.34) 15% 18%,transparent 18% 70%,rgba(40,245,255,.4) 70% 73%,transparent 73%),
-        repeating-linear-gradient(0deg,transparent 0 4px,rgba(80,220,195,.36) 4px 6px)}
-.glitch-overlay.active{animation:scan-flicker 2s steps(1,end) both}
-.glitch-overlay.handoff{animation:handoff-fade 650ms ease-out both}
-@keyframes scan-flicker{
-    0%,100%{opacity:0}
-    5%{opacity:.95}10%{opacity:.2}
-    17%{opacity:.9}22%{opacity:.1}
-    31%{opacity:1}36%{opacity:.2}
-    46%{opacity:.9}51%{opacity:.1}
-    61%{opacity:.95}66%{opacity:.15}
-    76%{opacity:.9}81%{opacity:.1}
-    91%{opacity:1}96%{opacity:.2}
+#screen{position:relative}
+#screen.glitching #value{animation:display-glitch 900ms steps(1,end) both}
+#screen.glitching::after,#screen.handoff::after{content:"";position:absolute;inset:20% 0 25%;
+    pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 5px,rgba(80,220,195,.24) 5px 7px)}
+#screen.glitching::after{animation:display-scan 900ms ease-out both}
+#screen.handoff::after{animation:display-scan 650ms ease-out reverse both}
+@keyframes display-glitch{
+    0%,100%{transform:translateX(0);text-shadow:none}
+    18%{transform:translateX(-3px);text-shadow:2px 0 rgba(255,40,110,.65),-2px 0 rgba(40,245,255,.55)}
+    36%{transform:translateX(2px);text-shadow:-2px 0 rgba(255,40,110,.5),2px 0 rgba(40,245,255,.45)}
+    54%{transform:translateX(-1px);text-shadow:1px 0 rgba(40,245,255,.35)}
 }
-@keyframes handoff-fade{0%,100%{opacity:0}20%{opacity:.85}45%{opacity:.25}70%{opacity:.65}}
+@keyframes display-scan{0%,100%{opacity:0}25%{opacity:.32}55%{opacity:.08}78%{opacity:.2}}
 </style>
 </head>
 <body>
-<div id="glitchOverlay" class="glitch-overlay" aria-hidden="true"></div>
 <span id="connectionIndicator" class="connection-indicator" role="status" aria-label="Not connected to PINX" title="Not connected to PINX"></span>
 <main>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
@@ -101,6 +97,7 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 <details id="installGuidance">
 <summary>iPhone setup and install (tap ± three times)</summary>
 <p>On iPhone, open this page in Safari, tap Share, then Add to Home Screen and confirm Add. iOS requires this confirmation; the app cannot install itself. On Android or desktop, use your browser menu to install PINX or add it to your Home Screen.</p>
+<p><button id="safariShare" type="button" hidden>Open Safari share sheet</button></p>
 <p>To connect on iPhone, start PINX Wi-Fi pairing and open its pairing link or QR code while the iPhone is on the same Wi-Fi network. Allow Local Network access if prompted. iPhone Safari does not support Web Bluetooth, so use Wi-Fi pairing.</p>
 <p>If GitHub Pages is blocked from reaching PINX's local HTTP address, iOS browser security prevents that connection; the PWA cannot bypass it. The calculator remains available offline.</p>
 <p>After the first successful load, the calculator interface and its app icons are cached for offline access. Phone pairing still requires a working connection to PINX on the same Wi-Fi network or a supported Bluetooth browser.</p>
@@ -423,32 +420,20 @@ function chime() {
     tone.connect(gain); gain.connect(audio.destination); tone.start(); tone.stop(now + .3);
 }
 async function playWebGlitch() {
-    const overlay = byId('glitchOverlay');
-    const keys = [...keyButtons.values()];
-    const originals = keys.map(key => key.textContent);
-    overlay.classList.add('active');
+    screen.classList.remove('glitching');
+    void screen.offsetWidth;
+    screen.classList.add('glitching');
     try {
-        for (let frame = 0; frame < 4; frame++) {
-            const labels = [...originals];
-            for (let i = labels.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [labels[i], labels[j]] = [labels[j], labels[i]];
-            }
-            keys.forEach((key, index) => { key.textContent = labels[index]; });
-            await pause(300);
-        }
-        await pause(800);
+        await pause(900);
     } finally {
-        keys.forEach((key, index) => { key.textContent = originals[index]; });
-        overlay.classList.remove('active');
+        screen.classList.remove('glitching');
     }
 }
 
 async function finishPredictionHandoff(result, reduced) {
     show(result);
     if (reduced || typeof value.animate !== 'function') return;
-    const overlay = byId('glitchOverlay');
-    overlay.classList.add('handoff');
+    screen.classList.add('handoff');
     try {
         await value.animate([
             { transform: 'translateX(-40vw)', opacity: 0 },
@@ -457,7 +442,7 @@ async function finishPredictionHandoff(result, reduced) {
             { transform: 'translateX(0)', opacity: 1 }
         ], { duration: 650, easing: 'ease-out' }).finished;
     } finally {
-        overlay.classList.remove('handoff');
+        screen.classList.remove('handoff');
     }
 }
 
@@ -753,6 +738,24 @@ bluetoothButton.addEventListener('click', async () => {
 window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
     installPrompt = event;
+});
+const safariShareButton = byId('safariShare');
+safariShareButton.hidden = !isIOSBrowser;
+safariShareButton.addEventListener('click', async () => {
+    const installStatus = byId('installStatus');
+    if (!navigator.share) {
+        installStatus.textContent = 'Use Safari’s Share button, then choose Add to Home Screen.';
+        return;
+    }
+    try {
+        await navigator.share({ title: document.title, url: location.href });
+        installStatus.textContent = 'If the share sheet offers Add to Home Screen, choose it and confirm Add.';
+    } catch (error) {
+        if (error?.name !== 'AbortError') {
+            installStatus.textContent = 'Use Safari’s Share button, then choose Add to Home Screen.';
+            console.warn('Could not open the Safari share sheet.', error);
+        }
+    }
 });
 async function activateInstallation() {
     const installStatus = byId('installStatus');
