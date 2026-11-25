@@ -83,7 +83,7 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 <dialog id="settings" aria-labelledby="settingsTitle">
 <div class="settings-heading"><h2 id="settingsTitle">Settings</h2><button id="done" type="button">Done</button></div>
 <details open>
-<summary>Wi-Fi pairing</summary>
+<summary id="pairingTitle">Phone pairing</summary>
 <p><a id="openPinx" class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end">Open PINX app</a></p>
 <p id="wifiPairHelp">Open this page from PINX's Wi-Fi pairing link to connect automatically. Keep both devices on the same Wi-Fi network and allow Local Network access if prompted.</p>
 <p id="bluetoothPairHelp">Bluetooth pairing is available on supported Android browsers. Enter PINX's current six-digit code; it changes when pairing restarts. Stop Wi-Fi pairing before switching modes.</p>
@@ -119,6 +119,7 @@ input,select{max-width:55%;min-height:44px;padding:6px}
 const byId = id => document.getElementById(id);
 const isIOSBrowser = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroidBrowser = /Android/i.test(navigator.userAgent);
 const screen = byId('screen'), value = byId('value'), keypad = byId('keys'), settings = byId('settings');
 const pairStatus = byId('pairStatus');
 const connectionIndicator = byId('connectionIndicator');
@@ -605,12 +606,18 @@ const voidBluetoothWrite = 'f307bcce-d82d-4c4b-a123-1cc717069ad3';
 const bluetoothButton = byId('bluetoothConnect');
 const bluetoothStatus = byId('bluetoothStatus');
 if (isIOSBrowser) {
+    byId('pairingTitle').textContent = 'iPhone Wi-Fi pairing';
     byId('openPinx').hidden = true;
     byId('openPinx').parentElement.hidden = true;
     bluetoothButton.parentElement.hidden = true;
     byId('bluetoothPairHelp').hidden = true;
+    byId('wifiPairHelp').textContent = 'Start PINX Wi-Fi pairing, then open its pairing link or QR code on this iPhone while both devices are on the same network. Allow Local Network access if prompted.';
     bluetoothStatus.textContent = 'iPhone pairing uses Wi-Fi. Open PINX’s Wi-Fi pairing link on the same network and allow Local Network access if prompted.';
     if (!pairedOverWifi) setConnectionStatus('Not connected. Open PINX’s Wi-Fi pairing link on this iPhone.');
+} else if (isAndroidBrowser) {
+    byId('pairingTitle').textContent = 'Android Bluetooth pairing';
+    byId('wifiPairHelp').hidden = true;
+    byId('bluetoothPairHelp').textContent = 'Enter PINX’s current six-digit code, then choose Connect Bluetooth. Keep Bluetooth pairing active in PINX while connected.';
 }
 
 function bluetoothOperation(session, operation) {
