@@ -710,7 +710,8 @@ async function toggleBluetoothConnection() {
         outgoingDigits = '';
         device.addEventListener('gattserverdisconnected', () =>
             endBluetoothSession(session, 'Bluetooth disconnected. Reconnect to PINX.'), { once: true });
-        setBluetoothStatus('Connected to PINX over Bluetooth. Double-tap ± to disconnect.');
+        bluetoothStatus.textContent = '';
+        bluetoothStatus.hidden = true;
         pollBluetooth(session);
     } catch (error) {
         if (device?.gatt?.connected) device.gatt.disconnect();
