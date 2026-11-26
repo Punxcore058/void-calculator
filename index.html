@@ -16,7 +16,10 @@
 body{margin:0;height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;display:grid;place-items:center;
     padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
         max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));overflow:hidden}
-main{width:min(100%,390px);width:min(100%,390px,calc((100dvh - 250px)/1.25))}
+main{width:min(100%,430px,calc((100vh - max(16px,env(safe-area-inset-top,0px)) - max(12px,env(safe-area-inset-bottom,0px)) - 130px)/1.25));
+    width:min(100%,430px,calc((100dvh - max(16px,env(safe-area-inset-top,0px)) - max(12px,env(safe-area-inset-bottom,0px)) - 130px)/1.25))}
+body[data-wifi-pairing=true] main{width:min(100%,430px,calc((100vh - max(16px,env(safe-area-inset-top,0px)) - max(12px,env(safe-area-inset-bottom,0px)) - 174px)/1.25));
+    width:min(100%,430px,calc((100dvh - max(16px,env(safe-area-inset-top,0px)) - max(12px,env(safe-area-inset-bottom,0px)) - 174px)/1.25))}
 .connection-indicator{position:fixed;z-index:5;top:max(3px,env(safe-area-inset-top));
     right:max(3px,env(safe-area-inset-right));width:44px;height:44px;min-height:44px;padding:0;
     border:0;border-radius:50%;background:transparent;box-shadow:none}
@@ -30,20 +33,20 @@ button{border:0;border-radius:10px;background:#282828;padding:10px 14px;min-heig
 #fullscreenStatus{margin:6px 0;color:#ffb4a9;font-size:13px;text-align:right}
 #fullscreenStatus:empty{display:none}
 :fullscreen{background:#090909}
-#screen{display:flex;align-items:end;justify-content:end;min-height:150px;padding:0 9px 12px;overflow:hidden}
-#value{white-space:nowrap;font-weight:300;font-variant-numeric:tabular-nums;font-size:72px;line-height:1.1}
+#screen{display:flex;align-items:end;justify-content:end;min-height:128px;padding:0 9px 12px;overflow:hidden}
+#value{white-space:nowrap;font-weight:300;font-variant-numeric:tabular-nums;font-size:clamp(72px,18vw,96px);line-height:1.1}
 #value.details{white-space:pre-line;max-width:100%;overflow-wrap:anywhere;text-align:right;font-size:clamp(20px,6vw,34px);line-height:1.2}
 #screen,#screen *,#keys,#keys *{-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 #keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(4px,2vw,9px)}
 .key:focus{outline:none}
 .key:focus-visible{outline:2px solid #d0d0d0;outline-offset:3px}
-.key{width:100%;min-width:0;border:0;border-radius:999px;aspect-ratio:1;background:#303030;font-size:clamp(18px,6vw,31px);touch-action:manipulation}
+.key{width:100%;min-width:0;border:0;border-radius:999px;aspect-ratio:1;background:#303030;font-size:clamp(20px,7vw,34px);touch-action:manipulation}
 .key.utility{background:#b5b5b5;color:#111}.key.operator{background:#ff9f0a;color:#16110a}
 .key.zero{grid-column:span 2;aspect-ratio:auto;text-align:left;padding-left:25px}
 .key:active,.key.lit{filter:brightness(1.55);transform:scale(.94)}
 [aria-pressed=true].operator{background:#fff}
 input{max-width:55%;min-height:44px;padding:6px}
-.connection-controls{display:grid;gap:8px;margin:10px 0}
+.connection-controls{display:grid;gap:8px;margin:0}
 .connection-controls[hidden],.connection-controls [hidden]{display:none}
 .pair-controls{display:flex;gap:8px}
 .pair-controls input{flex:1;min-width:0;max-width:none}
@@ -192,7 +195,8 @@ function fit() {
     if (value.classList.contains('details')) return;
     const width = screen.clientWidth - 18;
     const textWidth = value.scrollWidth;
-    if (width > 0 && textWidth > width) value.style.fontSize = Math.floor(72 * width / textWidth) + 'px';
+    const baseSize = parseFloat(getComputedStyle(value).fontSize);
+    if (width > 0 && textWidth > width) value.style.fontSize = Math.floor(baseSize * width / textWidth) + 'px';
 }
 function show(text) {
     value.textContent = text;
@@ -206,6 +210,8 @@ const hasWifiPairingLink = isPairingLink(currentUrl);
 const relayRoomId = currentUrl.searchParams.get('relay') || '';
 const hasRelayPairingLink = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(relayRoomId);
 const canWifiPair = hasWifiPairingLink || hasRelayPairingLink;
+document.body.dataset.wifiPairing = String(canWifiPair);
+byId('connectionControls').hidden = !canWifiPair;
 let relayEndpoint = null;
 async function wifiEndpoint(path) {
     if (!hasRelayPairingLink) return new URL(path, location.href).href;
