@@ -13,14 +13,17 @@
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#090909;color:#fff}
 *{box-sizing:border-box} html{min-height:100%;background:#090909;-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;
+body{margin:0;height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;display:grid;place-items:center;
     padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
-        max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
-main{width:min(100%,390px)}
-.connection-indicator{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));
-    right:max(10px,env(safe-area-inset-right));width:10px;height:10px;border-radius:50%;
+        max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));overflow:hidden}
+main{width:min(100%,390px);width:min(100%,390px,calc((100dvh - 250px)/1.25))}
+.connection-indicator{position:fixed;z-index:5;top:max(3px,env(safe-area-inset-top));
+    right:max(3px,env(safe-area-inset-right));width:44px;height:44px;min-height:44px;padding:0;
+    border:0;border-radius:50%;background:transparent;box-shadow:none}
+.connection-indicator::before{content:"";position:absolute;inset:17px;border-radius:50%;
     background:#4ade80;box-shadow:0 0 8px #4ade8080}
-.connection-indicator[hidden]{display:none}
+.connection-indicator[data-connected=true]::before{background:#000;box-shadow:0 0 3px #fff3;border:1px solid #333}
+.connection-indicator:focus-visible{outline:1px solid #777;outline-offset:1px}
 button,input,select{font:inherit} button{cursor:pointer;color:inherit}
 button,a{touch-action:manipulation}
 button{border:0;border-radius:10px;background:#282828;padding:10px 14px;min-height:44px}
@@ -31,10 +34,10 @@ button{border:0;border-radius:10px;background:#282828;padding:10px 14px;min-heig
 #value{white-space:nowrap;font-weight:300;font-variant-numeric:tabular-nums;font-size:72px;line-height:1.1}
 #value.details{white-space:pre-line;max-width:100%;overflow-wrap:anywhere;text-align:right;font-size:clamp(20px,6vw,34px);line-height:1.2}
 #screen,#screen *,#keys,#keys *{-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
-#keys{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+#keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(4px,2vw,9px)}
 .key:focus{outline:none}
 .key:focus-visible{outline:2px solid #d0d0d0;outline-offset:3px}
-.key{border:0;border-radius:999px;aspect-ratio:1;background:#303030;font-size:clamp(18px,6vw,31px);touch-action:manipulation}
+.key{width:100%;min-width:0;border:0;border-radius:999px;aspect-ratio:1;background:#303030;font-size:clamp(18px,6vw,31px);touch-action:manipulation}
 .key.utility{background:#b5b5b5;color:#111}.key.operator{background:#ff9f0a;color:#16110a}
 .key.zero{grid-column:span 2;aspect-ratio:auto;text-align:left;padding-left:25px}
 .key:active,.key.lit{filter:brightness(1.55);transform:scale(.94)}
@@ -46,11 +49,8 @@ input{max-width:55%;min-height:44px;padding:6px}
 .pair-controls input{flex:1;min-width:0;max-width:none}
 .connection-status{margin:0;color:#bbb;font-size:13px;line-height:1.4}
 .connection-actions{display:flex;gap:8px}
-.connection-actions button{flex:1}
-.connection-actions button.primary{background:#ff9f0a;color:#171108}
-#revealControls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
-#revealControls button{flex:1}
-#installStatus{margin:8px 0;color:#bbb;font-size:13px;text-align:center}
+#installStatus{position:fixed;z-index:6;left:50%;bottom:max(8px,env(safe-area-inset-bottom));transform:translateX(-50%);
+    max-width:calc(100vw - 32px);margin:0;padding:8px 12px;border-radius:8px;background:#282828;color:#bbb;font-size:13px;text-align:center}
 #installStatus:empty{display:none}
 
 .open-pinx{display:inline-block;padding:10px 14px;min-height:44px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
@@ -67,10 +67,22 @@ input{max-width:55%;min-height:44px;padding:6px}
     54%{transform:translateX(-1px);text-shadow:1px 0 rgba(40,245,255,.35)}
 }
 @keyframes display-scan{0%,100%{opacity:0}25%{opacity:.32}55%{opacity:.08}78%{opacity:.2}}
+@media (orientation:landscape) and (max-height:600px){
+    body{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right))
+        max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+    main{width:min(100%,540px);height:100%;display:grid;grid-template-columns:minmax(120px,.85fr) minmax(0,1.15fr);
+        grid-template-rows:minmax(0,1fr) auto auto;gap:4px 10px}
+    #screen{grid-column:1;grid-row:1;min-height:0}
+    #fullscreenStatus{grid-column:1;grid-row:2}
+    #connectionControls{grid-column:1;grid-row:3}
+    #keys{grid-column:2;grid-row:1/span 3;grid-template-rows:repeat(5,minmax(0,1fr));gap:4px;align-self:stretch}
+    .key{height:100%;width:auto;justify-self:center;align-self:center}
+    .key.zero{width:100%;height:100%}
+}
 </style>
 </head>
 <body>
-<span id="connectionIndicator" class="connection-indicator" role="status" aria-label="Not connected to PINX" title="Not connected to PINX"></span>
+<button id="connectionIndicator" class="connection-indicator" type="button" aria-label="Not connected to PINX" title="Connection status; tap three times to install PINX"></button>
 <main>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
 <p id="fullscreenStatus" role="status" aria-live="polite"></p>
@@ -82,16 +94,11 @@ input{max-width:55%;min-height:44px;padding:6px}
 <p id="wifiPairHelp" class="connection-status" hidden></p>
 <div class="connection-actions">
 <a id="openPinx" class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end" hidden>Open PINX app</a>
-<button id="bluetoothConnect" type="button" class="primary">Connect Bluetooth</button>
 </div>
 <p id="pairStatus" class="connection-status" role="status" hidden></p>
-<p id="bluetoothStatus" class="connection-status" role="status">Bluetooth pairing needs no PIN. Tap Connect and select PINX in a supported browser.</p>
+<p id="bluetoothStatus" class="connection-status" role="status" hidden></p>
 </div>
 <div id="keys" aria-label="Calculator keypad"></div>
-<div id="revealControls">
-<button id="manual" type="button">Reveal birthday</button>
-<p id="status" class="connection-status" role="status"></p>
-</div>
 <p id="installStatus" role="status" aria-live="polite"></p>
 </main>
 <script>
@@ -105,9 +112,9 @@ const pairStatus = byId('pairStatus');
 const connectionIndicator = byId('connectionIndicator');
 function setConnectionState(connected) {
     const message = connected ? 'Connected to PINX' : 'Not connected to PINX';
-    connectionIndicator.hidden = connected;
-    connectionIndicator.setAttribute('aria-label', message);
-    connectionIndicator.title = message;
+    connectionIndicator.dataset.connected = String(connected);
+    connectionIndicator.setAttribute('aria-label', `${message}. Tap three times to install PINX.`);
+    connectionIndicator.title = `${message} — tap three times to install PINX`;
 }
 setConnectionState(false);
 function setConnectionStatus(message) {
@@ -149,6 +156,7 @@ let revealed = false, audio;
 let installPrompt = null, installTapCount = 0, installTapTimer;
 const keyButtons = new Map();
 const operators = { '÷': (a,b) => b !== 0 ? a / b : 0, '×': (a,b) => a*b, '−': (a,b) => a-b, '+': (a,b) => a+b };
+connectionIndicator.addEventListener('click', registerInstallTap);
 function registerInstallTap() {
     clearTimeout(installTapTimer);
     installTapCount++;
@@ -175,14 +183,18 @@ for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','
         button.title = 'Exit app';
     }
     if (label === '±') {
-        button.setAttribute('aria-label', 'Toggle sign; tap three times to install PINX');
-        button.title = 'Toggle sign · tap three times to install PINX';
+        button.setAttribute('aria-label', 'Toggle sign; double-tap to connect or disconnect Bluetooth');
+        button.title = 'Toggle sign · double-tap to connect or disconnect Bluetooth';
     }
-    button.addEventListener('click', () => {
-        if (label === '±') registerInstallTap();
-        else {
-            clearTimeout(installTapTimer);
-            installTapCount = 0;
+    button.addEventListener('click', event => {
+        clearTimeout(installTapTimer);
+        installTapCount = 0;
+        if (label === '±') {
+            if (event.detail === 2) {
+                press(label);
+                void toggleBluetoothConnection();
+                return;
+            }
         }
         if (label === '.') void toggleFullscreen();
         press(label);
@@ -464,11 +476,6 @@ async function reveal(prediction, incoming = false) {
         keypad.inert = false;
     }
 }
-byId('manual').onclick = () => {
-    const prediction = getPrediction();
-    if (prediction) reveal(prediction);
-    else byId('status').textContent = 'Enter a valid birthday in MMDDYYYY format.';
-};
 document.addEventListener('keydown', event => {
     if (busy || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.target instanceof HTMLButtonElement && ['Enter', ' '].includes(event.key)) return;
@@ -585,7 +592,7 @@ byId('wifiConnect').addEventListener('click', async () => {
 const voidBluetoothService = 'f307bcce-d82d-4c4b-a123-1cc717069ad1';
 const voidBluetoothRead = 'f307bcce-d82d-4c4b-a123-1cc717069ad2';
 const voidBluetoothWrite = 'f307bcce-d82d-4c4b-a123-1cc717069ad3';
-const bluetoothButton = byId('bluetoothConnect');
+const bluetoothButton = keyButtons.get('±');
 const bluetoothStatus = byId('bluetoothStatus');
 const wifiPairHelp = byId('wifiPairHelp');
 byId('openPinx').hidden = !isAndroidBrowser;
@@ -596,14 +603,15 @@ if (canWifiPair) {
         : 'Enter Wi-Fi PIN 123456. Keep both phones on the same Wi-Fi network.';
 }
 if (isIOSBrowser) {
-    bluetoothButton.hidden = true;
-    bluetoothStatus.textContent = hasRelayPairingLink
-        ? 'Bluetooth is unavailable in iPhone Safari. Use the Wi-Fi relay above.'
-        : 'Bluetooth is unavailable in iPhone Safari. Open the PINX Wi-Fi pairing link first.';
     if (!canWifiPair) setConnectionStatus('Open PINX’s Wi-Fi pairing link or QR code first.');
 }
 byId('wifiConnect').hidden = !canWifiPair;
 byId('pairingCode').hidden = !canWifiPair;
+
+function setBluetoothStatus(message) {
+    bluetoothStatus.hidden = false;
+    bluetoothStatus.textContent = message;
+}
 
 function bluetoothOperation(session, operation) {
     const next = session.operation.then(() => {
@@ -622,8 +630,7 @@ function endBluetoothSession(session, message) {
     outgoingDigits = '';
     if (session.device.gatt.connected) session.device.gatt.disconnect();
     setConnectionState(false);
-    bluetoothStatus.textContent = message;
-    bluetoothButton.textContent = 'Connect Bluetooth';
+    setBluetoothStatus(message);
 }
 
 async function pollBluetooth(session) {
@@ -658,33 +665,33 @@ async function pollBluetooth(session) {
     }
 }
 
-bluetoothButton.addEventListener('click', async () => {
+async function toggleBluetoothConnection() {
     if (bluetoothSession) {
         endBluetoothSession(bluetoothSession, 'Bluetooth disconnected.');
         return;
     }
     if (bluetoothConnecting) return;
     if (hasWifiPairingLink) {
-        bluetoothStatus.textContent = isIOSBrowser
+        setBluetoothStatus(isIOSBrowser
             ? 'iPhone browsers do not support Web Bluetooth. Use PINX Wi-Fi pairing on the same network.'
-            : 'Open the HTTPS calculator page to switch from Wi-Fi to Bluetooth.';
+            : 'Open the HTTPS calculator page to switch from Wi-Fi to Bluetooth.');
         return;
     }
     if (isIOSBrowser) {
-        bluetoothStatus.textContent = 'iPhone browsers do not support Web Bluetooth. PINX Bluetooth pairing needs Android; use Wi-Fi pairing on the same network.';
+        setBluetoothStatus('iPhone browsers do not support Web Bluetooth. Use PINX Wi-Fi pairing instead.');
         return;
     }
     if (!window.isSecureContext) {
-        bluetoothStatus.textContent = 'Bluetooth pairing requires the HTTPS calculator page.';
+        setBluetoothStatus('Bluetooth pairing requires the HTTPS calculator page.');
         return;
     }
     if (!navigator.bluetooth) {
-        bluetoothStatus.textContent = 'Bluetooth pairing requires the HTTPS calculator in a browser with Web Bluetooth, such as Chrome on Android.';
+        setBluetoothStatus('Bluetooth needs a supported browser with Web Bluetooth, such as Chrome on Android.');
         return;
     }
     bluetoothConnecting = true;
     bluetoothButton.disabled = true;
-    bluetoothStatus.textContent = 'Choose PINX from the Bluetooth device list.';
+    setBluetoothStatus('Choose PINX from the Bluetooth device list.');
     let device;
     let phase = 'device selection';
     try {
@@ -703,25 +710,24 @@ bluetoothButton.addEventListener('click', async () => {
         outgoingDigits = '';
         device.addEventListener('gattserverdisconnected', () =>
             endBluetoothSession(session, 'Bluetooth disconnected. Reconnect to PINX.'), { once: true });
-        bluetoothButton.textContent = 'Disconnect Bluetooth';
-        bluetoothStatus.textContent = 'Connected to PINX over Bluetooth.';
+        setBluetoothStatus('Connected to PINX over Bluetooth. Double-tap ± to disconnect.');
         pollBluetooth(session);
     } catch (error) {
         if (device?.gatt?.connected) device.gatt.disconnect();
         if (phase === 'device selection' && error?.name === 'NotFoundError') {
-            bluetoothStatus.textContent = 'No PINX device was selected. Start Bluetooth pairing in PINX, then choose it here.';
+            setBluetoothStatus('No PINX device was selected. Start Bluetooth pairing in PINX, then try again.');
         } else if (phase === 'opening the PINX session') {
-            bluetoothStatus.textContent = 'Could not open a PINX Bluetooth session. Make sure Bluetooth pairing is active and try again.';
+            setBluetoothStatus('Could not open a PINX Bluetooth session. Make sure pairing is active and try again.');
         } else if (error?.name === 'NotAllowedError') {
-            bluetoothStatus.textContent = 'Bluetooth access was canceled or blocked. Allow Bluetooth for this site and try again.';
+            setBluetoothStatus('Bluetooth access was canceled or blocked. Allow Bluetooth for this site and try again.');
         } else {
-            bluetoothStatus.textContent = `Bluetooth failed while ${phase}. Check that PINX pairing is active and Nearby devices is allowed.`;
+            setBluetoothStatus(`Bluetooth failed while ${phase}. Check that PINX pairing is active and Nearby devices is allowed.`);
         }
     } finally {
         bluetoothConnecting = false;
         bluetoothButton.disabled = false;
     }
-});
+}
 
 window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
