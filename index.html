@@ -47,13 +47,8 @@ input{max-width:55%;min-height:44px;padding:6px}
 .connection-controls[hidden],.connection-controls [hidden]{display:none}
 .pair-controls{display:flex;gap:8px}
 .pair-controls input{flex:1;min-width:0;max-width:none}
-.connection-status{margin:0;color:#bbb;font-size:13px;line-height:1.4}
-.connection-actions{display:flex;gap:8px}
-#installStatus{position:fixed;z-index:6;left:50%;bottom:max(8px,env(safe-area-inset-bottom));transform:translateX(-50%);
-    max-width:calc(100vw - 32px);margin:0;padding:8px 12px;border-radius:8px;background:#282828;color:#bbb;font-size:13px;text-align:center}
-#installStatus:empty{display:none}
-
-.open-pinx{display:inline-block;padding:10px 14px;min-height:44px;border-radius:10px;background:#282828;color:#fff;text-decoration:none}
+.connection-status,#fullscreenStatus,#installStatus{display:none!important}
+#wifiConnect{width:44px;padding:0}
 #screen{position:relative}
 #screen.glitching #value{animation:display-glitch 900ms steps(1,end) both}
 #screen.glitching::after,#screen.handoff::after{content:"";position:absolute;inset:20% 0 25%;
@@ -82,18 +77,14 @@ input{max-width:55%;min-height:44px;padding:6px}
 </style>
 </head>
 <body>
-<button id="connectionIndicator" class="connection-indicator" type="button" aria-label="Not connected to PINX" title="Connection status; tap three times to install PINX"></button>
+<button id="connectionIndicator" class="connection-indicator" type="button" aria-label="Not connected to PINX"></button>
 <main>
 <div id="screen"><output id="value" aria-live="polite">0</output></div>
 <p id="fullscreenStatus" role="status" aria-live="polite"></p>
 <div id="connectionControls" class="connection-controls">
 <div class="pair-controls">
-<input id="pairingCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="PINX Wi-Fi pairing code" placeholder="Wi-Fi PIN" hidden>
-<button id="wifiConnect" type="button" hidden>Connect Wi-Fi</button>
-</div>
-<p id="wifiPairHelp" class="connection-status" hidden></p>
-<div class="connection-actions">
-<a id="openPinx" class="open-pinx" href="intent://open/calculator#Intent;scheme=pinx-void;package=com.peeksmith.phonebridge;end" hidden>Open PINX app</a>
+<input id="pairingCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" aria-label="PINX Wi-Fi pairing code" placeholder="••••••" hidden>
+<button id="wifiConnect" type="button" aria-label="Connect over Wi-Fi" hidden>↗</button>
 </div>
 <p id="pairStatus" class="connection-status" role="status" hidden></p>
 <p id="bluetoothStatus" class="connection-status" role="status" hidden></p>
@@ -106,7 +97,6 @@ input{max-width:55%;min-height:44px;padding:6px}
 const byId = id => document.getElementById(id);
 const isIOSBrowser = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const isAndroidBrowser = /Android/i.test(navigator.userAgent);
 const screen = byId('screen'), value = byId('value'), keypad = byId('keys');
 const pairStatus = byId('pairStatus');
 const connectionIndicator = byId('connectionIndicator');
@@ -114,12 +104,10 @@ function setConnectionState(connected) {
     const message = connected ? 'Connected to PINX' : 'Not connected to PINX';
     connectionIndicator.dataset.connected = String(connected);
     connectionIndicator.setAttribute('aria-label', `${message}. Tap three times to install PINX.`);
-    connectionIndicator.title = `${message} — tap three times to install PINX`;
 }
 setConnectionState(false);
 function setConnectionStatus(message) {
     if (pairStatus) {
-        pairStatus.hidden = false;
         pairStatus.textContent = message;
     }
 }
@@ -176,15 +164,12 @@ for (const label of ['AC','±','%','÷','7','8','9','×','4','5','6','−','1','
     button.textContent = label;
     if (label === '.') {
         button.setAttribute('aria-label', 'Decimal point and fullscreen toggle');
-        button.title = 'Decimal point and fullscreen toggle';
     }
     if (label === '%') {
         button.setAttribute('aria-label', 'Exit app');
-        button.title = 'Exit app';
     }
     if (label === '±') {
         button.setAttribute('aria-label', 'Toggle sign; double-tap to connect or disconnect Bluetooth');
-        button.title = 'Toggle sign · double-tap to connect or disconnect Bluetooth';
     }
     button.addEventListener('click', event => {
         clearTimeout(installTapTimer);
@@ -576,7 +561,8 @@ byId('wifiConnect').addEventListener('click', async () => {
         }
         pairedOverWifi = true;
         byId('pairingCode').value = '';
-        byId('wifiConnect').textContent = 'Connected over Wi-Fi';
+        byId('wifiConnect').textContent = '✓';
+        byId('wifiConnect').setAttribute('aria-label', 'Connected over Wi-Fi');
         setConnectionStatus('PIN accepted. Connecting to PINX…');
         void receiveWifiDigits();
     } catch (error) {
@@ -594,22 +580,10 @@ const voidBluetoothRead = 'f307bcce-d82d-4c4b-a123-1cc717069ad2';
 const voidBluetoothWrite = 'f307bcce-d82d-4c4b-a123-1cc717069ad3';
 const bluetoothButton = keyButtons.get('±');
 const bluetoothStatus = byId('bluetoothStatus');
-const wifiPairHelp = byId('wifiPairHelp');
-byId('openPinx').hidden = !isAndroidBrowser;
-wifiPairHelp.hidden = !canWifiPair;
-if (canWifiPair) {
-    wifiPairHelp.textContent = hasRelayPairingLink
-        ? 'Enter Wi-Fi PIN 123456 to connect through the relay. Both phones need internet access.'
-        : 'Enter Wi-Fi PIN 123456. Keep both phones on the same Wi-Fi network.';
-}
-if (isIOSBrowser) {
-    if (!canWifiPair) setConnectionStatus('Open PINX’s Wi-Fi pairing link or QR code first.');
-}
 byId('wifiConnect').hidden = !canWifiPair;
 byId('pairingCode').hidden = !canWifiPair;
 
 function setBluetoothStatus(message) {
-    bluetoothStatus.hidden = false;
     bluetoothStatus.textContent = message;
 }
 
